@@ -26,6 +26,7 @@ const activeLink = ({ isCurrent }) => (isCurrent ? { className: styles.active } 
 const Header = () => {
 
   const [showMenu, setShowMenu] = React.useState(false);
+  const [scrollPage, setScrollPage] = React.useState(false);
 
   const toggleMenu = () => {
     setShowMenu(!showMenu);
