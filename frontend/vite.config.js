@@ -25,6 +25,9 @@ export default defineConfig({
     // End workaround
 
   ],
+  server: {
+    host: true,
+  },
 
   // Workaround before renaming .js to .jsx
   optimizeDeps: {
