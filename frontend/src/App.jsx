@@ -1,6 +1,6 @@
 //eslint-disable-next-line
 import React from 'react'
-import Home from './pages/Home';
+import Home from './pages/home/Home.js';
 import Header from './components/header/Header';
 import Footer from './components/footer/Footer';
 
