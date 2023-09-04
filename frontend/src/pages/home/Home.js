@@ -10,6 +10,8 @@ import HomeInfo from "./HomeInfo.js";
 import CarouselItem from "../../components/carousel/CarouselItem.js";
 import {productData} from "../../components/carousel/Data.js";
 import ProductCarousel from "../../components/carousel/Carousel.js";
+import ProductCategory from "./ProductCategory.js";
+import FooterLinks from "../../components/footer/FooterLinks.js";
 
 
 const PageHeading = ({ heading, buttonText }) => {
@@ -49,6 +51,20 @@ const Home = () => {
                     <ProductCarousel products={items} />
                 </div>
             </section>
+
+            <section className="--bg-grey">
+                <div className="container">
+                    <h3>Categories</h3>
+                    <ProductCategory/>
+                </div>
+            </section>
+            <section>
+                <div className="container">
+                    <PageHeading heading={"Electronics"} buttonText={"View All"} />
+                    <ProductCarousel products={items} />
+                </div>
+            </section>
+            <FooterLinks/>
         </div>
     )};
 

@@ -10,8 +10,6 @@ const ProductCarousel = ({products}) => {
         <div>
             <Carousel
                 swipeable={true}
-                draggable={false}
-                showDots={true}
                 responsive={responsive}
                 ssr={true} // means to render carousel on server-side.
                 infinite={true}
