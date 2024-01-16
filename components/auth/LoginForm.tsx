@@ -36,8 +36,12 @@ export const LoginForm = () => {
                             <FormItem>
                                 <FormLabel>Email</FormLabel>
                                 <FormControl>
-                                    <Input {...field}/>
+                                    <Input {...field} 
+                                            placeholder="example@gmail.com"
+                                           type="email"
+                                    />
                                 </FormControl>
+                                <FormMessage/>
                             </FormItem>
                         )}/>
                 </div>
