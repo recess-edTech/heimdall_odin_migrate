@@ -5,8 +5,13 @@
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
+  "homepage": "https://nerds.africa",
+  "repository": {
+    "type": "git",
+    "url": "github.com/domains18/npm-package-test.git"
+  },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "tsup"
   },
   "keywords": [
     "npm"
