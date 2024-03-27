@@ -1,0 +1,16 @@
+{
+  "name": "npm-package-test",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"tsup src/index.ts --format cjs,esm --dts"
+  },
+  "keywords": [],
+  "author": "Domains18",
+  "license": "ISC",
+  "devDependencies": {
+    "tsup": "^8.0.2",
+    "typescript": "^5.4.3"
+  }
+}
