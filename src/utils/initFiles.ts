@@ -3,6 +3,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as readline from 'readline';
 import * as path from 'path';
+import { promptForGit } from '../modules/promptMods';
 
 const execPromise = promisify(exec);
 const rl = readline.createInterface({
@@ -44,25 +45,16 @@ export async function initWithNpm(projectName: string) {
 
     console.log('Initializing repository using npm init -y');
     await execPromise(createFilesCommand);
-    console.log('npm init success');
-    console.log('Creating necessary files');
-    console.log('Files created successfully');
+    console.log('npm init success\n, creating files......................\n Files created successfully');
+    await promptForGit(projectDir).then(() => {
+      console.log('Project successfully initialized!');
+      process.exit(0);
+    });
 
-    await execPromise('git init', { cwd: projectDir });
-    console.log('git init success');
 
     console.log('Project successfully initialized!');
     process.exit(0);
   } catch (error) {
     console.error(error);
   }
-}
-
-export async function promptForProjectName(): Promise<string> {
-  return new Promise((resolve) => {
-    rl.question('Enter project name: ', (name) => {
-      rl.close();
-      resolve(name);
-    });
-  });
 }

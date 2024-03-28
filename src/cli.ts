@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 
 import { program } from "commander";
-import { initWithNpm, promptForProjectName } from "./utils/initFiles";
+import { initWithNpm,} from "./utils/initFiles";
+import { promptForProjectName } from "./modules/promptMods";
+
 
 program
   .name("matsumi")
@@ -28,7 +30,7 @@ program
     }
 
     if (!projectName) {
-      console.log("No project name provided");
+      console.log("No project name provided please enter the project name:");
       projectName = await promptForProjectName();
     }
 
