@@ -3,7 +3,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as readline from 'readline';
 import * as path from 'path';
-import { promptForGit } from '../modules/promptMods';
+import { promptForGit, promptForVSCode } from '../modules/promptMods';
 
 const execPromise = promisify(exec);
 const rl = readline.createInterface({
@@ -11,28 +11,30 @@ const rl = readline.createInterface({
   output: process.stdout,
 });
 
-export async function initWithNpm(projectName: string) {
+async function checkAndInstallPackage(packageName: string, installCommand: string) {
   try {
-    // Check if npm is installed
-    await execPromise('npm -v');
+    await execPromise(`${packageName} -v`);
   } catch (error) {
-    console.log('npm is not installed, installing npm');
+    console.log(`${packageName} is not installed, installing ${packageName}`);
     try {
-      await execPromise('npm install npm@latest -g');
-      console.log('npm installed successfully');
+      await execPromise(installCommand);
+      console.log(`${packageName} installed successfully`);
     } catch (error) {
       console.error(error);
       return;
     }
   }
+}
 
+async function initProjectWithPackage(packageManager: 'npm' | 'pnpm', projectName: string) {
   try {
     const projectDir = path.join(process.cwd(), projectName);
     console.log(`Creating project directory: ${projectDir}`);
+
     const createFilesCommand = `
       mkdir -p ${projectDir} &&
       cd ${projectDir} &&
-      npm init -y --scope=@${projectName} &&
+      ${packageManager} init ${packageManager === 'npm' ? '-y' : ''} --scope=@${projectName} &&
       if [ ! -d "src" ]; then
         mkdir src
         mkdir src/utils
@@ -43,18 +45,26 @@ export async function initWithNpm(projectName: string) {
       touch src/utils/parseArgs.ts
     `;
 
-    console.log('Initializing repository using npm init -y');
+    console.log(`Initializing repository using ${packageManager} init`);
     await execPromise(createFilesCommand);
-    console.log('npm init success\n, creating files......................\n Files created successfully');
-    await promptForGit(projectDir).then(() => {
-      console.log('Project successfully initialized!');
-      process.exit(0);
-    });
+    console.log(`${packageManager} init success\nCreating files...\nFiles created successfully`);
 
+    await promptForGit(projectDir);
+    await promptForVSCode(projectDir);
 
     console.log('Project successfully initialized!');
     process.exit(0);
   } catch (error) {
     console.error(error);
   }
+}
+
+export async function initWithNpm(projectName: string) {
+  await checkAndInstallPackage('npm', 'npm install npm@latest -g');
+  await initProjectWithPackage('npm', projectName);
+}
+
+export async function initWithPnpm(projectName: string) {
+  await checkAndInstallPackage('pnpm', 'sudo npm install pnpm@latest -g');
+  await initProjectWithPackage('pnpm', projectName);
 }

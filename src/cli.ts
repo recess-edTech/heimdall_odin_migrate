@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { program } from "commander";
-import { initWithNpm,} from "./utils/initFiles";
+import { initWithNpm, initWithPnpm} from "./utils/initFiles";
 import { promptForProjectName } from "./modules/promptMods";
 
 
@@ -14,6 +14,7 @@ program
   .command("init")
   .description("Initialize a new repository")
   .option("-n, --npm", "Initialize with npm")
+  .option("-p, --pnpm", "Initialize with pnpm")
   .option("-h, --help", "Display help for the init command")
   .argument("[project-name]", "Name of the project")
   .action(async (projectName, options) => {
@@ -22,6 +23,7 @@ program
       console.log();
       console.log("Options:");
       console.log("  -n, --npm  Initialize with npm");
+      console.log("  -p, --pnpm  Initialize with pnpm");
       console.log("  -h, --help  Display help for the init command");
       console.log();
       console.log("Arguments:");
@@ -33,11 +35,13 @@ program
       console.log("No project name provided please enter the project name:");
       projectName = await promptForProjectName();
     }
-
     if (options.npm) {
-      await initWithNpm(projectName);
+      initWithNpm(projectName);
+    } else if (options.pnpm) {
+      initWithPnpm(projectName);
     } else {
-      console.error("Please specify the --npm option");
+      console.log("Please provide an option to initialize with npm or pnpm");
+      process.exit(0);
     }
   });
 
