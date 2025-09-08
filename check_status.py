@@ -14,8 +14,8 @@ from rich.table import Table
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from config import V1_DB_CONFIG, V2_DB_CONFIG
-from db_utils import DatabaseManager
+from config.config import V1_DB_CONFIG, V2_DB_CONFIG
+from db_utils.db_utils import DatabaseManager
 
 
 console = Console()

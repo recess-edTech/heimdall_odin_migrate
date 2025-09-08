@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 from datetime import datetime
 
-from .db_utils import db_manager
+from .db_utils.db_utils import db_manager
 from .utils import setup_logging
 
 setup_logging("INFO")

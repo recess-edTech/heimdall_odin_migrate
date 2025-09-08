@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 import pandas as pd
 
-from .config import ODIN_DIR, JSON_DATA_PATH, SAMPLE_DATA_PATH
+from .config.config import ODIN_DIR, JSON_DATA_PATH, SAMPLE_DATA_PATH
 
 
 def setup_logging(level: str = "INFO"):

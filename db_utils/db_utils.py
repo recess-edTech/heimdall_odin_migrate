@@ -10,7 +10,7 @@ from sqlalchemy import create_engine, text, MetaData
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 
-from .config import V1_DB_CONFIG, V2_DB_CONFIG
+from ..config.config import V1_DB_CONFIG, V2_DB_CONFIG
 
 logger = logging.getLogger(__name__)
 
