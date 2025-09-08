@@ -100,15 +100,12 @@ class TeacherMigrator:
             teacher_data = {k: v for k, v in teacher_data.items() if v is not None}
             
             # Insert teacher
-            teacher_id = await db_manager.insert_record("teachers", teacher_data)
+            await db_manager.insert_record("teachers", teacher_data)
             
-            if teacher_id:
-                self.teacher_mappings[v1_teacher['id']] = user_id  # Map to user_id, not teacher_id
-                logger.info(f"Migrated teacher: {v1_teacher['firstname']} {v1_teacher['lastname']} (User ID: {user_id})")
-                return True
-            else:
-                logger.error(f"Failed to create teacher record for: {v1_teacher['firstname']} {v1_teacher['lastname']}")
-                return False
+            # Store mapping
+            self.teacher_mappings[v1_teacher['id']] = user_id  # Map to user_id, not teacher_id
+            logger.info(f"Migrated teacher: {v1_teacher['firstname']} {v1_teacher['lastname']} (User ID: {user_id})")
+            return True
                 
         except Exception as e:
             logger.error(f"Error migrating teacher {v1_teacher.get('firstname', '')} {v1_teacher.get('lastname', '')}: {e}")
