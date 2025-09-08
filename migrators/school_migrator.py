@@ -7,9 +7,9 @@ import logging
 from typing import Dict, Any, List, Optional
 import pandas as pd
 
-from .db_utils import db_manager
-from .config import DEFAULT_CURRICULUM_ID, DEFAULT_GRADE_SYSTEM_ID, DEFAULT_CLASS_LEVEL_ID
-from .user_utils import user_manager, UserType, UserData
+from ..db_utils import db_manager
+from ..config import DEFAULT_CURRICULUM_ID, DEFAULT_GRADE_SYSTEM_ID, DEFAULT_CLASS_LEVEL_ID
+from ..user_utils import user_manager, UserType, UserData
 
 logger = logging.getLogger(__name__)
 

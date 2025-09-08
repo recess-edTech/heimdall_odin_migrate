@@ -6,8 +6,8 @@ Creates User records and Parent records for each V1 parent
 import logging
 from typing import Dict, Any, List, Optional
 
-from ..db_utils.db_utils import db_manager
-from ..user_utils.user_utils import user_manager
+from ..db_utils import db_manager
+from ..user_utils import user_manager
 from .school_migrator import school_migrator
 
 logger = logging.getLogger(__name__)

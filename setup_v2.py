@@ -7,8 +7,8 @@ import logging
 import asyncio
 from typing import Dict, Any, List
 
-from .db_utils.db_utils import db_manager
-from .config.config import DEFAULT_VALUES
+from .db_utils import db_manager
+from .config import DEFAULT_VALUES
 
 logger = logging.getLogger(__name__)
 

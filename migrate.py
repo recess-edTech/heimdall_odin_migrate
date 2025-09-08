@@ -12,14 +12,14 @@ from typing import List, Dict, Any
 import argparse
 from datetime import datetime
 
-from .config.config import DRY_RUN, LOG_LEVEL, BATCH_SIZE, MIGRATION_ORDER
-from .db_utils.db_utils import db_manager
-from .utils import setup_logging, create_backup, validate_migration
-from .user_utils.user_utils import user_manager
-from .migrators.school_migrator import school_migrator
-from .migrators.teacher_migrator import teacher_migrator
-from .migrators.parent_migrator import parent_migrator
-from .migrators.student_migrator import student_migrator
+from config import DRY_RUN, LOG_LEVEL, BATCH_SIZE, MIGRATION_ORDER
+from db_utils import db_manager
+from utils import setup_logging, create_backup, validate_migration
+from user_utils import user_manager
+from migrators.school_migrator import school_migrator
+from migrators.teacher_migrator import teacher_migrator
+from migrators.parent_migrator import parent_migrator
+from migrators.student_migrator import student_migrator
 
 logger = logging.getLogger(__name__)
 
