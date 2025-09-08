@@ -1,0 +1,192 @@
+version: '3.8'
+
+services:
+  # PostgreSQL database for testing both Heimdall and Odin schemas
+  postgres-test:
+    image: postgres:15-alpine
+    container_name: migration-postgres
+    environment:
+      POSTGRES_DB: test_db
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: test_password
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=C --lc-ctype=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./tests/fixtures/sql:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test_user -d test_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - migration-network
+
+  # Migration service in development mode
+  migrator-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: migration-dev
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+    environment:
+      - HEIMDALL_DB_HOST=postgres-test
+      - HEIMDALL_DB_PORT=5432
+      - HEIMDALL_DB_NAME=test_db
+      - HEIMDALL_DB_USER=test_user
+      - HEIMDALL_DB_PASSWORD=test_password
+      - ODIN_DB_HOST=postgres-test
+      - ODIN_DB_PORT=5432
+      - ODIN_DB_NAME=test_db
+      - ODIN_DB_USER=test_user
+      - ODIN_DB_PASSWORD=test_password
+      - DRY_RUN=True
+      - LOG_LEVEL=DEBUG
+    volumes:
+      - .:/home/migrator
+      - migration_logs:/home/migrator/logs
+    working_dir: /home/migrator
+    networks:
+      - migration-network
+    command: ["tail", "-f", "/dev/null"]  # Keep container running
+
+  # Migration service in production mode
+  migrator-prod:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: migration-prod
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+    environment:
+      - HEIMDALL_DB_HOST=postgres-test
+      - HEIMDALL_DB_PORT=5432
+      - HEIMDALL_DB_NAME=test_db
+      - HEIMDALL_DB_USER=test_user
+      - HEIMDALL_DB_PASSWORD=test_password
+      - ODIN_DB_HOST=postgres-test
+      - ODIN_DB_PORT=5432
+      - ODIN_DB_NAME=test_db
+      - ODIN_DB_USER=test_user
+      - ODIN_DB_PASSWORD=test_password
+      - DRY_RUN=True
+      - LOG_LEVEL=INFO
+    volumes:
+      - migration_logs:/home/migrator/logs
+      - migration_backups:/home/migrator/backups
+    networks:
+      - migration-network
+    profiles:
+      - production
+
+  # Testing service
+  migrator-test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: testing
+    container_name: migration-test
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+    environment:
+      - HEIMDALL_DB_HOST=postgres-test
+      - HEIMDALL_DB_PORT=5432
+      - HEIMDALL_DB_NAME=test_db
+      - HEIMDALL_DB_USER=test_user
+      - HEIMDALL_DB_PASSWORD=test_password
+      - ODIN_DB_HOST=postgres-test
+      - ODIN_DB_PORT=5432
+      - ODIN_DB_NAME=test_db
+      - ODIN_DB_USER=test_user
+      - ODIN_DB_PASSWORD=test_password
+      - PYTHONPATH=/home/migrator
+    volumes:
+      - .:/home/migrator
+      - test_reports:/home/migrator/test-reports
+    networks:
+      - migration-network
+    profiles:
+      - testing
+
+  # Linting service
+  migrator-lint:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: linting
+    container_name: migration-lint
+    volumes:
+      - .:/home/migrator
+    networks:
+      - migration-network
+    profiles:
+      - linting
+
+  # Redis for caching (optional)
+  redis:
+    image: redis:7-alpine
+    container_name: migration-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - migration-network
+    profiles:
+      - redis
+
+  # Monitoring with Prometheus (optional)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: migration-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+    networks:
+      - migration-network
+    profiles:
+      - monitoring
+
+  # Grafana for visualization (optional)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: migration-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+    networks:
+      - migration-network
+    profiles:
+      - monitoring
+
+networks:
+  migration-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  migration_logs:
+  migration_backups:
+  test_reports:
+  redis_data:
+  prometheus_data:
+  grafana_data:
