@@ -1,0 +1,215 @@
+"""
+School migration from V1 to V2 schema
+Schools are migrated first as they have the fewest dependencies
+"""
+
+import logging
+from typing import Dict, Any, List, Optional
+import pandas as pd
+
+from .db_utils import db_manager
+from .config import DEFAULT_CURRICULUM_ID, DEFAULT_GRADE_SYSTEM_ID, DEFAULT_CLASS_LEVEL_ID
+from .user_utils import user_manager, UserType, UserData
+
+logger = logging.getLogger(__name__)
+
+
+class SchoolMigrator:
+    """Handles migration of schools from V1 to V2"""
+    
+    def __init__(self):
+        self.school_mappings = {}  # Maps V1 school IDs to V2 school IDs
+        self.migrated_count = 0
+        self.failed_count = 0
+        
+    async def migrate_schools(self) -> Dict[str, Any]:
+        """Main method to migrate all schools"""
+        logger.info("Starting school migration...")
+        
+        try:
+            # Get all schools from V1
+            v1_schools = await self._get_v1_schools()
+            logger.info(f"Found {len(v1_schools)} schools in V1 database")
+            
+            # Migrate each school
+            for school in v1_schools:
+                success = await self._migrate_single_school(school)
+                if success:
+                    self.migrated_count += 1
+                else:
+                    self.failed_count += 1
+            
+            # Create school admin users for each school
+            await self._create_school_admin_users(v1_schools)
+            
+            result = {
+                "success": True,
+                "migrated": self.migrated_count,
+                "failed": self.failed_count,
+                "total": len(v1_schools),
+                "mappings": self.school_mappings
+            }
+            
+            logger.info(f"School migration completed: {self.migrated_count} successful, {self.failed_count} failed")
+            return result
+            
+        except Exception as e:
+            logger.error(f"School migration failed: {e}")
+            return {"success": False, "error": str(e)}
+    
+    async def _get_v1_schools(self) -> List[Dict[str, Any]]:
+        """Get all schools from V1 database"""
+        query = """
+            SELECT 
+                id, schoolName, email, phone, schoolCode, schoolLevel,
+                schoolMotto, schoolVision, country, county, logo, 
+                schoolAddress, isActive, isVerified, isDeleted,
+                CreatedAt, UpdatedAt, type
+            FROM "School"
+            WHERE isDeleted = false
+            ORDER BY "CreatedAt"
+        """
+        
+        return await db_manager.execute_query(query, engine_version="v1")
+    
+    async def _migrate_single_school(self, v1_school: Dict[str, Any]) -> bool:
+        """Migrate a single school from V1 to V2"""
+        try:
+            # Map school level to class level (this might need customization)
+            level_id = await self._map_school_level(v1_school.get('schoolLevel', 'PRIMARY'))
+            
+            # Prepare school data for V2
+            school_data = {
+                "name": v1_school['schoolname'],
+                "email": v1_school['email'],
+                "country": v1_school.get('country', 'Kenya'),
+                "county": v1_school.get('county', 'Nairobi'),
+                "curriculum_id": DEFAULT_CURRICULUM_ID,
+                "is_deleted": v1_school.get('isdeleted', False),
+                "is_active": v1_school.get('isactive', True),
+                "address": v1_school.get('schooladdress', ''),
+                "phone_number": v1_school['phone'],
+                "type": self._map_school_type(v1_school.get('type', 'PRIVATE')),
+                "logo": v1_school.get('logo'),
+                "government_code": v1_school['schoolcode'],
+                "is_verified": v1_school.get('isverified', False),
+                "level_id": level_id,
+                "grade_system_id": DEFAULT_GRADE_SYSTEM_ID,
+                "vision_statement": v1_school.get('schoolvision'),
+                "motto": v1_school.get('schoolmotto'),
+                "vision": v1_school.get('schoolvision'),  # Legacy field
+                "onboarded": True,  # Assume migrated schools are onboarded
+            }
+            
+            # Remove None values
+            school_data = {k: v for k, v in school_data.items() if v is not None}
+            
+            # Insert school into V2
+            v2_school_id = await db_manager.insert_record("schools", school_data)
+            
+            if v2_school_id:
+                self.school_mappings[v1_school['id']] = v2_school_id
+                logger.info(f"Migrated school: {v1_school['schoolname']} (V1: {v1_school['id']} -> V2: {v2_school_id})")
+                return True
+            else:
+                logger.error(f"Failed to create school: {v1_school['schoolname']}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error migrating school {v1_school.get('schoolname', 'Unknown')}: {e}")
+            logger.error(f"School data: {v1_school}")
+            return False
+    
+    async def _map_school_level(self, v1_level: str) -> int:
+        """Map V1 school level to V2 class level ID"""
+        # This is a simplified mapping - you might need to create proper class levels first
+        level_mapping = {
+            "PRIMARY": DEFAULT_CLASS_LEVEL_ID,
+            "SECONDARY": DEFAULT_CLASS_LEVEL_ID,
+            "HIGH_SCHOOL": DEFAULT_CLASS_LEVEL_ID,
+            "MIXED": DEFAULT_CLASS_LEVEL_ID,
+        }
+        
+        return level_mapping.get(v1_level, DEFAULT_CLASS_LEVEL_ID)
+    
+    def _map_school_type(self, v1_type: str) -> str:
+        """Map V1 school type to V2 school type"""
+        type_mapping = {
+            "PRIVATE": "PRIVATE",
+            "PUBLIC": "PUBLIC", 
+            "INTERNATIONAL": "INTERNATIONAL"
+        }
+        
+        return type_mapping.get(v1_type, "PRIVATE")
+    
+    async def _create_school_admin_users(self, v1_schools: List[Dict[str, Any]]):
+        """Create school admin users for schools that had direct login credentials"""
+        logger.info("Creating school admin users...")
+        
+        for v1_school in v1_schools:
+            v2_school_id = self.school_mappings.get(v1_school['id'])
+            if not v2_school_id:
+                continue
+                
+            # V1 schools had direct email/password - create admin user
+            if v1_school.get('email') and v1_school.get('password'):
+                try:
+                    # Extract name from school name for admin user
+                    admin_name = self._extract_admin_name(v1_school['schoolname'])
+                    
+                    # Create user data for school admin
+                    user_data = UserData(
+                        first_name=admin_name,
+                        middle_name=None,
+                        last_name="Admin",
+                        email=v1_school['email'],
+                        phone_number=v1_school.get('phone'),
+                        password=v1_school.get('password'),
+                        user_type=UserType.SCHOOL_ADMIN,
+                        school_id=v2_school_id,
+                        is_active=v1_school.get('isactive', True),
+                        is_verified=v1_school.get('isverified', False),
+                        v1_id=f"school_admin_{v1_school['id']}"
+                    )
+                    
+                    # Create user
+                    admin_user_id = await user_manager.create_user(user_data)
+                    
+                    if admin_user_id:
+                        # Create SchoolAdmin record
+                        admin_data = {
+                            "user_id": admin_user_id,
+                            "school_id": v2_school_id,
+                            "is_main": True,  # Mark as main admin
+                            "position": "Principal"  # Default position
+                        }
+                        
+                        await db_manager.insert_record("school_admins", admin_data)
+                        logger.info(f"Created school admin for {v1_school['schoolname']}")
+                    
+                except Exception as e:
+                    logger.error(f"Error creating school admin for {v1_school['schoolname']}: {e}")
+    
+    def _extract_admin_name(self, school_name: str) -> str:
+        """Extract a reasonable admin name from school name"""
+        # Simple logic - take first word or use "School"
+        words = school_name.split()
+        if words:
+            return words[0]
+        return "School"
+    
+    def get_v2_school_id(self, v1_school_id: str) -> Optional[int]:
+        """Get V2 school ID from V1 school ID"""
+        return self.school_mappings.get(v1_school_id)
+    
+    def get_mapping_stats(self) -> Dict[str, int]:
+        """Get statistics about school migration"""
+        return {
+            "total_migrated": self.migrated_count,
+            "total_failed": self.failed_count,
+            "total_mappings": len(self.school_mappings)
+        }
+
+
+# Global school migrator instance  
+school_migrator = SchoolMigrator()

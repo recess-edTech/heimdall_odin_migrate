@@ -1,0 +1,1117 @@
+// Prisma schema for a unified EdTech platform with modular school-based access.
+// Supports schools, students, teachers, parents, and platform-level administration.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  // directUrl = env("DIRECT_URL")
+}
+
+/**
+ * Permission Modules and Permissions
+ */
+
+model PermissionModule {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique // billing, reports, attendance, etc.
+  alias     String // e.g., "Billing", "Attendance"
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  isActive  Boolean  @default(true) @map("is_active")
+
+  Permission Permission[]
+
+  @@map("permission_modules")
+}
+
+enum PermissionScope {
+  ACCOUNT // school-level permissions
+  ADMIN // RecessAdmin-level permissions
+}
+
+model Permission {
+  id        Int             @id @default(autoincrement())
+  name      String          @unique // e.g., "view_billing", "manage_attendance"
+  alias     String // e.g., "View Billing", "Manage Attendance"
+  moduleId  Int             @map("module_id")
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @updatedAt @map("updated_at")
+  scope     PermissionScope @default(ACCOUNT)
+
+  permissionModule PermissionModule @relation(fields: [moduleId], references: [id])
+  UserPermission   UserPermission[]
+
+  @@map("permissions")
+}
+
+// ------------------- User Management -------------------
+// Includes: User, Student, Teacher, Parent, SchoolAdmin, RecessAdmin
+// roles and permissions
+model User {
+  id                       Int       @id @default(autoincrement())
+  uuid                     String    @default(uuid())
+  createdAt                DateTime  @default(now()) @map("created_at")
+  updatedAt                DateTime  @updatedAt @map("updated_at")
+  version                  Int       @default(1) // for optimistic concurrency control - prisma does not support this directly
+  isDeleted                Boolean   @default(false) @map("is_deleted")
+  firstName                String    @map("first_name")
+  middleName               String?   @map("middle_name")
+  lastName                 String    @map("last_name")
+  email                    String?   @unique @map("email") // nullable, because RecessAdmin does not have one
+  phoneNumber              String?   @unique @map("phone_number")
+  password                 String?   @map("password")
+  isPasswordSet            Boolean   @default(false) @map("is_password_set")
+  passwordSetToken         String?   @map("password_set_token")
+  passwordResetRequested   Boolean   @default(false) @map("password_reset_requested")
+  passwordResetToken       String?   @map("password_reset_token")
+  passwordResetTokenExpiry DateTime? @map("password_reset_token_expiry")
+  profilePicture           String?   @map("profile_picture") // URL to the picture on S3 or similar service
+  type                     UserType
+  isActive                 Boolean   @default(true)
+  schoolId                 Int?      @map("school_id") // nullable, because RecessAdmin does not have one
+  isVerified               Boolean   @default(false) @map("is_verified") // for email verification
+  country                  String    @default("Kenya")
+  verificationToken        String?   @map("verification_token")
+  verificationTokenExpiry  DateTime? @map("verification_token_expiry")
+
+  school                            School?                             @relation(fields: [schoolId], references: [id])
+  Student                           Student?
+  Teacher                           Teacher?
+  Parent                            Parent?
+  SchoolAdmin                       SchoolAdmin?
+  RecessAdmin                       RecessAdmin?
+  Newsletter                        Newsletter[]
+  NewsletterReadStatus              NewsletterReadStatus[]
+  UserActivityLog                   UserActivityLog[]
+  UserPermission                    UserPermission[]
+  Notification                      Notification[]
+  schoolResource                    SchoolResource[]
+  StudentImportHistory              StudentImportHistory[]
+  SchoolEvent                       SchoolEvent[]
+  EventNotification                 SchoolEventNotification[]
+  ExtraCurricularActivity           ExtraCurricularActivity[]
+  ExtraCurricularActivityAttendance ExtraCurricularActivityAttendance[]
+
+  @@map("users")
+}
+
+model UserPermission {
+  id           Int      @id @default(autoincrement())
+  userId       Int      @map("user_id")
+  permissionId Int      @map("permission_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user       User       @relation(fields: [userId], references: [id])
+  permission Permission @relation(fields: [permissionId], references: [id])
+
+  @@unique([userId, permissionId])
+  @@map("user_permissions")
+}
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+model Student {
+  id              Int       @id @default(autoincrement())
+  userId          Int       @unique @map("user_id")
+  gender          Gender
+  dateOfBirth     DateTime  @map("date_of_birth")
+  address         String?
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  isDeleted       Boolean   @default(false) @map("is_deleted")
+  isActive        Boolean   @default(true) @map("is_active")
+  isEnrolled      Boolean   @default(true) @map("is_enrolled")
+  enrollmentDate  DateTime? @map("enrollment_date")
+  isGraduated     Boolean   @default(false) @map("is_graduated")
+  schoolId        Int       @map("school_id")
+  // denormalized field for quick lookups
+  schoolClassId   Int       @map("school_class_id")
+  admissionNumber String    @map("admission_number")
+  // streamId is optional, because not all schools use streams
+  streamId        Int?      @map("stream_id") // used to query students by stream??
+
+  user                                     User                                       @relation(fields: [userId], references: [id])
+  school                                   School                                     @relation(fields: [schoolId], references: [id])
+  schoolClass                              SchoolClass                                @relation(fields: [schoolClassId], references: [id])
+  stream                                   Stream?                                    @relation(fields: [streamId], references: [id])
+  StudentParent                            StudentParent[]
+  StudentAccessCode                        StudentAccessCode?
+  EmergencyContact                         EmergencyContact[]
+  StudentClassHistory                      StudentClassHistory[]
+  BadgeAward                               BadgeAward[]
+  StudentBadgeProgress                     StudentBadgeProgress?
+  ExtraCurricularActivityAttendance        ExtraCurricularActivityAttendance[]
+  ExtraCurricularActivityEnrollmentRequest ExtraCurricularActivityEnrollmentRequest[]
+
+  @@unique([schoolId, admissionNumber])
+  @@map("students")
+}
+
+model StudentAccessCode {
+  id        Int      @id @default(autoincrement())
+  studentId Int      @unique @map("student_id")
+  code      String   @map("code")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  student Student @relation(fields: [studentId], references: [id])
+
+  @@map("student_access_codes")
+}
+
+model Teacher {
+  id                    Int      @id @default(autoincrement())
+  userId                Int      @unique @map("user_id")
+  schoolId              Int      @map("school_id")
+  qualification         String?
+  subjectSpecialization String?  @map("subject_specialization")
+  employmentDate        DateTime @map("employment_date")
+  isActive              Boolean  @default(true) @map("is_active")
+  isDeleted             Boolean  @default(false) @map("is_deleted")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  user               User                 @relation(fields: [userId], references: [id])
+  school             School               @relation(fields: [schoolId], references: [id])
+  SchoolClassSubject SchoolClassSubject[]
+  SchoolClassSession SchoolClassSession[]
+  BadgeAward         BadgeAward[]
+  Badge              Badge[]
+
+  @@index([schoolId])
+  @@map("teachers")
+}
+
+model Parent {
+  id         Int        @id @default(autoincrement())
+  userId     Int        @unique @map("user_id")
+  occupation String?
+  type       ParentType
+  address    String?
+  createdAt  DateTime   @default(now()) @map("created_at")
+  updatedAt  DateTime   @updatedAt @map("updated_at")
+
+  user                           User                                       @relation(fields: [userId], references: [id])
+  StudentParent                  StudentParent[]
+  ExtraCurricularActivityRequest ExtraCurricularActivityEnrollmentRequest[]
+
+  @@map("parents")
+}
+
+model StudentParent {
+  id        Int      @id @default(autoincrement())
+  studentId Int      @map("student_id")
+  parentId  Int      @map("parent_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  student Student @relation(fields: [studentId], references: [id])
+  parent  Parent  @relation(fields: [parentId], references: [id])
+
+  @@unique([studentId, parentId])
+  @@index([parentId])
+  @@index([studentId])
+  @@map("student_parents")
+}
+
+model SchoolAdmin {
+  id       Int     @id @default(autoincrement())
+  userId   Int     @unique @map("user_id")
+  schoolId Int     @map("school_id")
+  isMain   Boolean @default(false) @map("is_main") // indicates if this is the main admin for the school
+  position String? // e.g., "Principal", "Vice Principal", "Others"
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("school_admins")
+}
+
+model RecessAdmin {
+  id     Int    @id @default(autoincrement())
+  userId Int    @unique @map("user_id")
+  role   String // this should be a type of recess admin role, e.g., "superadmin", "support"
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("recess_admins")
+}
+
+enum EmergencyRelationship {
+  AUNT
+  UNCLE
+  SIBLING
+  GRANDPARENT
+  FRIEND
+  OTHER
+  NEIGHBOR
+}
+
+model EmergencyContact {
+  id           Int                   @id @default(autoincrement())
+  studentId    Int                   @map("student_id")
+  fullName     String                @map("full_name")
+  relationship EmergencyRelationship
+  phoneNumber  String                @map("phone_number")
+  email        String?
+  address      String?
+  isPrimary    Boolean               @default(false) @map("is_primary")
+  createdAt    DateTime              @default(now()) @map("created_at")
+  updatedAt    DateTime              @updatedAt @map("updated_at")
+
+  student Student @relation(fields: [studentId], references: [id])
+
+  @@unique([studentId, phoneNumber])
+  @@map("emergency_contacts")
+}
+
+// ------------------- School Management -------------------
+model Curriculum {
+  id            Int      @id @default(autoincrement())
+  name          String   @unique
+  alias         String // e.g., "Kenya 8-4-4", "British", "American"
+  country       String?
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  isDeleted     Boolean  @default(false) @map("is_deleted")
+  isActive      Boolean  @default(true) @map("is_active")
+  gradeSystemId Int      @map("grade_system_id")
+
+  Subject                 Subject[]
+  School                  School[]
+  Class                   Class[]
+  Department              Department[]
+  CurriculumClassSubject  CurriculumClassSubject[]
+  GradeSystem             GradeSystem?              @relation(fields: [gradeSystemId], references: [id])
+  SchoolCurriculumHistory SchoolCurriculumHistory[]
+  ClassLevel              ClassLevel[]
+
+  @@map("curriculums")
+}
+
+model Department {
+  id           Int      @id @default(autoincrement())
+  name         String
+  curriculumId Int      @map("curriculum_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  curriculum       Curriculum         @relation(fields: [curriculumId], references: [id])
+  subjects         Subject[]
+  School           School?            @relation(fields: [schoolId], references: [id])
+  schoolId         Int?
+  SchoolDepartment SchoolDepartment[]
+
+  @@unique([name, curriculumId])
+  @@map("departments")
+}
+
+model ClassLevel {
+  id           Int      @id @default(autoincrement())
+  name         String // "PRIMARY", "JUNIOR SECONDARY", etc.
+  minAge       Int?     @map("min_age")
+  maxAge       Int?     @map("max_age")
+  curriculumId Int      @map("curriculum_id")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  classes    Class[]
+  curriculum Curriculum @relation(fields: [curriculumId], references: [id])
+  School     School[]
+
+  @@unique([name, curriculumId])
+  @@map("class_levels")
+}
+
+model Class {
+  id           Int      @id @default(autoincrement())
+  name         String
+  curriculumId Int      @map("curriculum_id")
+  order        Int // this is like the class order (code) in the curriculum, e.g., 1 for Class 1, 2 for Class 2, etc.
+  levelId      Int      @map("level_id")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  curriculum             Curriculum               @relation(fields: [curriculumId], references: [id])
+  level                  ClassLevel               @relation(fields: [levelId], references: [id])
+  SchoolClass            SchoolClass[]
+  CurriculumClassSubject CurriculumClassSubject[]
+  StudentImportHistory   StudentImportHistory[]
+
+  @@unique([name, curriculumId])
+  @@map("classes")
+}
+
+model Subject {
+  id           Int      @id @default(autoincrement())
+  name         String
+  curriculumId Int?     @map("curriculum_id")
+  departmentId Int?     @map("department_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  curriculum             Curriculum?              @relation(fields: [curriculumId], references: [id])
+  department             Department?              @relation(fields: [departmentId], references: [id])
+  SchoolClassSubject     SchoolClassSubject[]
+  SchoolClassSession     SchoolClassSession[]
+  CurriculumClassSubject CurriculumClassSubject[]
+  schoolResource         SchoolResource[]
+
+  @@unique([name, curriculumId])
+  @@map("subjects")
+}
+
+model CurriculumClassSubject {
+  id           Int      @id @default(autoincrement())
+  curriculumId Int      @map("curriculum_id")
+  classId      Int      @map("class_id")
+  subjectId    Int      @map("subject_id")
+  level        String? // Optional override if a subject is cross-level
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  termId       Int?     @map("term_id") // if subjects are term-specific
+  // we might introduce gradingPolicyId in the future
+
+  curriculum         Curriculum           @relation(fields: [curriculumId], references: [id])
+  class              Class                @relation(fields: [classId], references: [id])
+  subject            Subject              @relation(fields: [subjectId], references: [id])
+  SchoolClassSubject SchoolClassSubject[]
+
+  @@unique([curriculumId, classId, subjectId])
+  @@map("curriculum_class_subjects")
+}
+
+// ------------------- Grading Systems -------------------
+enum GradeType {
+  LETTER // A, B, C...
+  NUMERIC // 1-100 or 1-9
+  DESCRIPTIVE // "Meets Expectations", "Excellent"
+}
+
+model GradeSystem {
+  id           Int       @id @default(autoincrement())
+  name         String // e.g., "8-4-4 Standard", "ABC Grading"
+  description  String?
+  gradeType    GradeType @map("grade_type")
+  isDefault    Boolean   @default(false) @map("is_default") // For internal marking
+  isPredefined Boolean   @default(false) @map("is_predefined")
+  schoolId     Int?      @map("school_id") // null for platform-defined
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  country      String?   @default("Kenya") // Optional, for platform-defined grading systems
+
+  grades             Grade[]
+  School             School[]
+  SchoolClassSubject SchoolClassSubject[]
+  Curriculum         Curriculum[]
+
+  @@unique([name, schoolId])
+  @@map("grade_systems")
+}
+
+model Grade {
+  id            Int      @id @default(autoincrement())
+  gradeSystemId Int      @map("grade_system_id")
+  name          String // e.g., A, B, Fail
+  minScore      Float    @map("min_score") // e.g., 70.0
+  maxScore      Float    @map("max_score") // e.g., 100.0
+  remark        String?
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  gradeSystem GradeSystem @relation(fields: [gradeSystemId], references: [id])
+
+  @@unique([gradeSystemId, name])
+  @@map("grades")
+}
+
+model Badge {
+  id             Int           @id @default(autoincrement())
+  name           String        @unique
+  description    String
+  imageUrl       String?
+  iconName       String?
+  criteria       Json
+  type           BadgeType
+  points         Int           @default(0)
+  level          BadgeLevel
+  category       BadgeCategory
+  milestoneBadge Boolean       @default(false) @map("milestone_badge")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @default(now()) @updatedAt @map("updated_at")
+
+  createdById Int     @map("created_by")
+  creator     Teacher @relation(fields: [createdById], references: [userId])
+
+  awards BadgeAward[]
+
+  isDeleted Boolean @default(false) @map("is_deleted")
+
+  @@map("badges")
+}
+
+model BadgeAward {
+  id        Int      @id @default(autoincrement())
+  badgeId   Int?     @map("badge_id")
+  studentId Int      @map("student_id")
+  awardedAt DateTime @default(now()) @map("awarded_at")
+  awardedBy Int      @map("awarded_by") // teacher userId who awarded the badge
+
+  reason  String? @db.Text // reason for awarding the badge
+  badge   Badge?  @relation(fields: [badgeId], references: [id])
+  student Student @relation(fields: [studentId], references: [id])
+
+  schoolId Int
+  teacher  Teacher @relation(fields: [awardedBy], references: [userId])
+  school   School  @relation(fields: [schoolId], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  isDeleted Boolean @default(false) @map("is_deleted")
+
+  @@map("badge_awards")
+}
+
+model StudentBadgeProgress {
+  id           Int     @id @default(autoincrement())
+  studentId    Int     @unique @map("student_id")
+  totalPoints  Int     @default(0) @map("total_points") // Total points accumulated by the student
+  badgesEarned Int     @default(0) @map("badges_earned") // Total badges earned by the student
+  student      Student @relation(fields: [studentId], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  isDeleted Boolean @default(false) @map("is_deleted")
+
+  @@map("student_badge_progress")
+}
+
+// ------------------- School Management -------------------
+
+enum SchoolType {
+  PRIVATE
+  PUBLIC
+  INTERNATIONAL
+}
+
+model School {
+  id                Int        @id @default(autoincrement())
+  name              String
+  email             String     @unique
+  country           String     @default("Kenya")
+  county            String?    @default("Nairobi")
+  curriculumId      Int        @map("curriculum_id")
+  isDeleted         Boolean    @default(false) @map("is_deleted")
+  isActive          Boolean    @default(true) @map("is_active")
+  createdAt         DateTime   @default(now()) @map("created_at")
+  updatedAt         DateTime   @updatedAt @map("updated_at")
+  address           String
+  phoneNumber       String     @map("phone_number")
+  type              SchoolType @default(PRIVATE)
+  logo              String?
+  governmentCode    String     @unique @map("government_code")
+  isVerified        Boolean    @default(false) @map("is_verified") // for email verification
+  onboarded         Boolean    @default(false) // indicates if the school has completed onboarding
+  onboardingComment String?    @map("onboarding_comment") // optional comment during onboarding
+  levelId           Int        @map("level_id") // id is gotten from curriculum-- e.g., PRIMARY, JUNIOR SECONDARY, SENIOR SECONDARY, HIGH SCHOOL
+  gradeSystemId     Int?       @map("grade_system_id")
+  // TODO: should level be a table with age groups and other details?
+  visionStatement   String?    @map("vision_statement")
+  missionStatement  String?    @map("mission_statement")
+  motto             String?
+  vision            String?
+
+  curriculum              Curriculum?               @relation(fields: [curriculumId], references: [id])
+  level                   ClassLevel                @relation(fields: [levelId], references: [id])
+  Student                 Student[]
+  Teacher                 Teacher[]
+  Department              Department[]
+  Term                    Term[]
+  AcademicYear            AcademicYear[]
+  Newsletter              Newsletter[]
+  User                    User[]
+  SchoolClass             SchoolClass[]
+  SchoolDepartment        SchoolDepartment[]
+  GradeSystem             GradeSystem?              @relation(fields: [gradeSystemId], references: [id])
+  SchoolClassSubject      SchoolClassSubject[]
+  StudentImportHistory    StudentImportHistory[]
+  SchoolResource          SchoolResource[]
+  SchoolCurriculumHistory SchoolCurriculumHistory[]
+  BadgeAward              BadgeAward[]
+  ExtraCurricularActivity ExtraCurricularActivity[]
+  SchoolEvent             SchoolEvent[]
+
+  @@map("schools")
+}
+
+model SchoolCurriculumHistory {
+  id                  Int      @id @default(autoincrement())
+  schoolId            Int      @map("school_id")
+  curriculumId        Int      @map("curriculum_id")
+  startAcademicYearId Int      @map("start_academic_year_id")
+  endAcademicYearId   Int?     @map("end_academic_year_id")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  school       School       @relation(fields: [schoolId], references: [id])
+  curriculum   Curriculum   @relation(fields: [curriculumId], references: [id])
+  academicYear AcademicYear @relation("SCH_CURR_START", fields: [startAcademicYearId], references: [id])
+
+  @@unique([schoolId, startAcademicYearId]) // one record per school-year start
+  @@map("school_curriculum_histories")
+}
+
+model SchoolClass {
+  id             Int      @id @default(autoincrement())
+  name           String // e.g. "JSS1A - 2024/2025" or "Grade 1 Yellow"
+  schoolId       Int      @map("school_id")
+  classId        Int      @map("class_id") // global class id/template
+  academicYearId Int      @map("academic_year_id") // NEW: associates this class with an AcademicYear
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  class  Class  @relation(fields: [classId], references: [id])
+  school School @relation(fields: [schoolId], references: [id])
+
+  streams             Stream[]
+  classSubjects       SchoolClassSubject[]
+  Student             Student[]
+  SchoolClassSession  SchoolClassSession[]
+  StudentClassHistory StudentClassHistory[]
+
+  @@unique([name, schoolId, academicYearId]) // Prevent exact duplicate cohort names in same year
+  @@map("school_classes")
+}
+
+model SchoolClassSubject {
+  id                       Int      @id @default(autoincrement())
+  schoolId                 Int      @map("school_id")
+  schoolClassId            Int      @map("school_class_id")
+  subjectId                Int      @map("subject_id")
+  teacherId                Int?     @map("teacher_id")
+  curriculumClassSubjectId Int?     @map("curriculum_class_subject_id") // NEW: link to global mapping
+  academicYearId           Int      @map("academic_year_id") // NEW: year context
+  createdAt                DateTime @default(now()) @map("created_at")
+  updatedAt                DateTime @updatedAt @map("updated_at")
+  gradeSystemId            Int?     @map("grade_system_id") // Optional, if grading is specific to this class-subject
+
+  school                 School                  @relation(fields: [schoolId], references: [id])
+  schoolClass            SchoolClass             @relation(fields: [schoolClassId], references: [id])
+  subject                Subject                 @relation(fields: [subjectId], references: [id])
+  Teacher                Teacher?                @relation(fields: [teacherId], references: [id])
+  GradeSystem            GradeSystem?            @relation(fields: [gradeSystemId], references: [id])
+  CurriculumClassSubject CurriculumClassSubject? @relation(fields: [curriculumClassSubjectId], references: [id])
+  academicYear           AcademicYear?           @relation(fields: [academicYearId], references: [id])
+
+  @@unique([schoolId, schoolClassId, subjectId, academicYearId])
+  @@index([schoolId]) // For school-specific queries
+  @@map("school_class_subjects")
+}
+
+model SchoolDepartment {
+  id           Int      @id @default(autoincrement())
+  name         String // Customizable
+  schoolId     Int      @map("school_id")
+  departmentId Int      @map("department_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  department Department @relation(fields: [departmentId], references: [id])
+  school     School     @relation(fields: [schoolId], references: [id])
+
+  @@unique([name, schoolId])
+  @@map("school_departments")
+}
+
+model Stream {
+  id            Int      @id @default(autoincrement())
+  name          String // e.g. "Blue", "Green"
+  schoolClassId Int      @map("school_class_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  schoolClass         SchoolClass           @relation(fields: [schoolClassId], references: [id])
+  Student             Student[]
+  StudentClassHistory StudentClassHistory[]
+
+  @@unique([name, schoolClassId])
+  @@map("streams")
+}
+
+model SchoolClassSession {
+  id            Int       @id @default(autoincrement())
+  schoolClassId Int       @map("school_class_id")
+  subjectId     Int?      @map("subject_id")
+  teacherId     Int       @map("teacher_id")
+  termId        Int       @map("termi_id")
+  date          DateTime
+  startTime     DateTime? @map("start_time")
+  endTime       DateTime? @map("end_time")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  streamId      Int?      @map("stream_id")
+
+  schoolClass SchoolClass  @relation(fields: [schoolClassId], references: [id])
+  teacher     Teacher      @relation(fields: [teacherId], references: [id])
+  attendances Attendance[]
+  Subject     Subject?     @relation(fields: [subjectId], references: [id])
+  term        Term         @relation(fields: [termId], references: [id])
+
+  @@index([schoolClassId, date])
+  @@map("school_class_sessions")
+}
+
+enum PromotionReason {
+  PROMOTION
+  TRANSFER
+  REASSIGNMENT
+  DEMOTION
+  CORRECTION
+}
+
+// rename to StudentHistory ??
+model StudentClassHistory {
+  id             Int              @id @default(autoincrement())
+  studentId      Int              @map("student_id")
+  schoolId       Int              @map("school_id")
+  schoolClassId  Int              @map("school_class_id")
+  streamId       Int?             @map("stream_id")
+  academicYearId Int              @map("academic_year_id")
+  startDate      DateTime         @map("start_date")
+  isActive       Boolean          @default(false) @map("is_acitve")
+  endDate        DateTime?        @map("end_date")
+  reason         PromotionReason? @default(PROMOTION)
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+
+  student      Student      @relation(fields: [studentId], references: [id])
+  schoolClass  SchoolClass  @relation(fields: [schoolClassId], references: [id])
+  stream       Stream?      @relation(fields: [streamId], references: [id])
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
+
+  @@unique([studentId, academicYearId])
+  @@map("student_class_histories")
+}
+
+model StudentImportHistory {
+  id           Int      @id @default(autoincrement())
+  schoolId     Int      @map("school_id")
+  classId      Int?     @map("class_id")
+  uploadedBy   Int      @map("uploaded_by")
+  totalRecords Int      @map("total_records")
+  successCount Int      @map("success_count")
+  failedCount  Int      @map("failed_count")
+  errors       Json? // store row-by-row errors
+  fileName     String?  @map("file_name")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  school School @relation(fields: [schoolId], references: [id])
+  class  Class? @relation(fields: [classId], references: [id])
+  user   User   @relation(fields: [uploadedBy], references: [id])
+
+  @@map("student_import_histories")
+}
+
+// ------------------- Engagements -------------------
+model Homework {
+  id          Int      @id @default(autoincrement())
+  title       String
+  description String?
+  classId     Int      @map("class_id")
+  subjectId   Int      @map("subject_id")
+  teacherId   Int      @map("teacher_id")
+  termId      Int      @map("term_id")
+  dueDate     DateTime @map("due_date")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  totalMarks  Float?   @map("total_marks")
+
+  @@map("homeworks")
+}
+
+model StudentHomework {
+  id          Int       @id @default(autoincrement())
+  studentId   Int       @map("student_id")
+  homeworkId  Int       @map("homework_id")
+  score       Float?
+  submittedAt DateTime? @map("submitted_at")
+
+  @@map("student_homeworks")
+}
+
+model AcademicYear {
+  id         Int      @id @default(autoincrement())
+  name       String
+  startDate  DateTime @map("start_date")
+  endDate    DateTime @map("end_date")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  schoolId   Int      @map("school_id")
+  isActive   Boolean  @default(false) @map("is_active")
+  isArchived Boolean  @default(false) @map("is_archived")
+
+  school                  School                    @relation(fields: [schoolId], references: [id])
+  Term                    Term[]
+  StudentClassHistory     StudentClassHistory[]
+  SchoolCurriculumHistory SchoolCurriculumHistory[] @relation("SCH_CURR_START")
+  SchoolClassSubject      SchoolClassSubject[]
+
+  @@map("academic_years")
+}
+
+model Term {
+  id             Int      @id @default(autoincrement())
+  name           String
+  termNumber     Int      @map("term_number") // 1, 2, 3 - makes sorting deterministic
+  startDate      DateTime @map("start_date")
+  endDate        DateTime @map("end_date")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  schoolId       Int      @map("school_id")
+  academicYearId Int      @map("academic_year_id")
+  isActive       Boolean  @default(false) @map("is_active")
+
+  AcademicYear       AcademicYear         @relation(fields: [academicYearId], references: [id])
+  School             School               @relation(fields: [schoolId], references: [id])
+  SchoolClassSession SchoolClassSession[]
+  SchoolEvent        SchoolEvent[]
+
+  @@unique([academicYearId, termNumber])
+  @@map("terms")
+}
+
+model Attendance {
+  id                   Int              @id @default(autoincrement())
+  studentId            Int              @map("student_id")
+  sessionId            Int              @map("session_id")
+  date                 DateTime
+  markedBy             Int?             @map("marked_by")
+  createdAt            DateTime         @default(now()) @map("created_at")
+  updatedAt            DateTime         @updatedAt @map("updated_at")
+  status               AttendanceStatus
+  schoolClassSessionId Int?
+
+  SchoolClassSession SchoolClassSession? @relation(fields: [schoolClassSessionId], references: [id])
+
+  @@map("attendances")
+}
+
+model Diary {
+  id        Int        @id @default(autoincrement())
+  teacherId Int        @map("teacher_id")
+  studentId Int        @map("student_id")
+  content   String     @db.VarChar(1000)
+  visibleTo Visibility @map("visible_to")
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+
+  @@map("diaries")
+}
+
+model Newsletter {
+  id          Int           @id @default(autoincrement())
+  schoolId    Int           @map("school_id")
+  title       String
+  content     String
+  audience    AudienceGroup
+  createdById Int           @map("created_by_id")
+  createdAt   DateTime      @default(now()) @map("created_at")
+
+  school    School @relation(fields: [schoolId], references: [id])
+  createdBy User   @relation(fields: [createdById], references: [id])
+
+  NewsletterReadStatus NewsletterReadStatus[]
+
+  @@map("newsletters")
+}
+
+model NewsletterReadStatus {
+  id           Int       @id @default(autoincrement())
+  newsletterId Int       @map("newsletter_id")
+  userId       Int       @map("user_id")
+  readAt       DateTime?
+
+  newsletter Newsletter @relation(fields: [newsletterId], references: [id])
+  user       User       @relation(fields: [userId], references: [id])
+
+  @@unique([newsletterId, userId])
+  @@map("newsletter_read_status")
+}
+
+enum AudienceGroup {
+  ALL
+  TEACHERS
+  PARENTS
+  STUDENTS
+}
+
+model UserActivityLog {
+  id        Int          @id @default(autoincrement())
+  userId    Int          @map("user_id")
+  type      UserType
+  activity  ActivityType
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("user_activity_logs")
+}
+
+model Notification {
+  id         Int                 @id @default(autoincrement())
+  userId     Int?                @map("user_id")
+  channel    NotificationChannel
+  type       NotificationType
+  status     NotificationStatus
+  to         String
+  cc         String?
+  bcc        String?
+  replyTo    String?             @map("reply_to")
+  sender     String?
+  subject    String?
+  body       String?
+  templateId String?             @map("template_id")
+  data       Json?
+  error      String?
+  sentAt     DateTime?
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@map("notifications")
+}
+
+model SchoolResource {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?
+  fileUrl     String   @map("file_url")
+  filePath    String   @map("file_path")
+  subjectId   Int?     @map("subject_id")
+  schoolId    Int      @map("school_id")
+  uploadedBy  Int      @map("uploaded_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt
+  isDeleted   Boolean  @default(false) @map("is_deleted")
+
+  school   School   @relation(fields: [schoolId], references: [id])
+  uploader User     @relation(fields: [uploadedBy], references: [id])
+  subject  Subject? @relation(fields: [subjectId], references: [id])
+
+  @@map("school_resources")
+}
+
+model ExtraCurricularActivity {
+  id           Int      @id @default(autoincrement())
+  name         String
+  description  String?
+  isCharged    Boolean  @default(false) @map("is_charged")
+  chargeAmount Float    @default(0) @map("charge_amount")
+  skills       String[]
+  startDate    DateTime @map("start_date")
+  endDate      DateTime @map("end_date")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt
+  isDeleted    Boolean  @default(false) @map("is_deleted")
+
+  createdById Int @map("created_by_id")
+  schoolId    Int @map("school_id")
+
+  school                            School                                     @relation(fields: [schoolId], references: [id])
+  creator                           User                                       @relation(fields: [createdById], references: [id])
+  ExtraCurricularActivityRequests   ExtraCurricularActivityEnrollmentRequest[]
+  ExtraCurricularActivityAttendance ExtraCurricularActivityAttendance[]
+
+  @@map("extra_curricular_activities")
+}
+
+model ExtraCurricularActivityEnrollmentRequest {
+  id         Int           @id @default(autoincrement())
+  userId     Int           @map("user_id")
+  studentId  Int           @map("student_id")
+  activityId Int           @map("activity_id")
+  status     RequestStatus @default(PENDING)
+  createdAt  DateTime      @default(now()) @map("created_at")
+  updatedAt  DateTime      @updatedAt
+
+  parent   Parent                  @relation(fields: [userId], references: [userId])
+  student  Student                 @relation(fields: [studentId], references: [id])
+  activity ExtraCurricularActivity @relation(fields: [activityId], references: [id])
+
+  @@map("extra_curricular_activity_requests")
+}
+
+model ExtraCurricularActivityAttendance {
+  id         Int              @id @default(autoincrement())
+  userId     Int              @map("user_id")
+  studentId  Int              @map("student_id")
+  activityId Int              @map("activity_id")
+  status     AttendanceStatus
+  date       DateTime
+  createdAt  DateTime         @default(now()) @map("created_at")
+  updatedAt  DateTime         @updatedAt
+
+  student  Student                 @relation(fields: [studentId], references: [id])
+  activity ExtraCurricularActivity @relation(fields: [activityId], references: [id])
+  markedBy User                    @relation(fields: [userId], references: [id])
+
+  @@map("extra_curricular_activity_attendance")
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// ----- SCHOOL EVENTS -----
+enum AudienceType {
+  SCHOOL_WIDE
+  CLASS_SPECIFIC
+}
+
+enum SchoolEventCategory {
+  ACADEMIC
+  SPORTS
+  SOCIAL
+  EMERGENCY
+  GENERAL
+  ASSEMBLY
+  MEETING
+}
+
+model SchoolEvent {
+  id           Int                 @id @default(autoincrement())
+  name         String
+  description  String?
+  venue        String?
+  startDate    DateTime            @map("start_date")
+  endDate      DateTime?           @map("end_date") // null = single-day
+  category     SchoolEventCategory @default(GENERAL)
+  isDeleted    Boolean             @default(false)
+  createdAt    DateTime            @default(now()) @map("created_at")
+  updatedAt    DateTime            @updatedAt @map("updated_at")
+  audienceType AudienceType        @map("audience_type")
+  audiences    AudienceGroup[]
+  classIds     Int[]               @map("class_ids") // stores SchoolClass ids if CLASS_SPECIFIC
+  termId       Int?                @map("term_id") // optional, if event is tied to a term
+  schoolId     Int                 @map("school_id")
+  authorId     Int                 @map("author_id") // User who created the event
+
+  term          Term?                     @relation(fields: [termId], references: [id])
+  school        School                    @relation(fields: [schoolId], references: [id])
+  author        User                      @relation(fields: [authorId], references: [id])
+  notifications SchoolEventNotification[]
+
+  @@index([schoolId])
+  @@map("school_events")
+}
+
+model SchoolEventNotification {
+  id        Int      @id @default(autoincrement())
+  eventId   Int      @map("event_id")
+  userId    Int      @map("user_id")
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  event SchoolEvent @relation(fields: [eventId], references: [id])
+  user  User        @relation(fields: [userId], references: [id])
+
+  @@unique([eventId, userId]) // one notification record per user per event
+  @@map("school_event_notifications")
+}
+
+// ------------------- Enums -------------------
+enum NotificationChannel {
+  EMAIL
+  SMS
+  PUSH
+  IN_APP
+}
+
+enum NotificationType {
+  VERIFICATION
+  WELCOME
+  SECURITY
+  INVITATION
+  GENERAL
+  REMINDER
+  MARKETING
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  RETRYING
+}
+
+enum ActivityType {
+  HOMEWORK_SUBMITTED
+  ATTENDANCE_MARKED
+  DIARY_READ
+  NEWSLETTER_READ
+  EVENT_CREATED
+}
+
+enum UserType {
+  STUDENT
+  TEACHER
+  PARENT
+  SCHOOL_ADMIN
+  RECESS_ADMIN
+}
+
+enum ParentType {
+  FATHER
+  MOTHER
+  GUARDIAN
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+enum Visibility {
+  STUDENT
+  PARENT
+  TEACHER
+  SCHOOL_ADMIN
+  RECESS_ADMIN
+}
+
+enum BadgeType {
+  ACADEMIC
+  BEHAVIORAL
+  ACHIEVEMENT
+  SPECIAL
+}
+
+enum BadgeLevel {
+  BRONZE
+  SILVER
+  GOLD
+}
+
+enum BadgeCategory {
+  ACADEMICS
+  CO_CURRICULAR
+  SOCIAL_BEHAVIOR
+  ATTENDANCE
+}
