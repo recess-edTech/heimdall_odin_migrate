@@ -1,8 +1,5 @@
 # V1 to V2 Database Migration System
 
-A comprehensive Python-based migration system for migrating data from V1 Prisma schema to V2 Prisma schema. This system handles the key architectural change where V1 uses separate authentication tables for teachers, parents, and students, while V2 uses a centralized User table with role-based relationships.
-
-## 🏗️ Architecture Overview
 
 ### Key Changes V1 → V2
 - **V1**: Separate `Teacher`, `Parent`, `Student` tables with direct authentication
