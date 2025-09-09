@@ -16,6 +16,7 @@ from config import DRY_RUN, LOG_LEVEL, BATCH_SIZE, MIGRATION_ORDER
 from db_utils import db_manager
 from utils import setup_logging, create_backup, validate_migration
 from user_utils import user_manager
+from migration_session import create_migration_session, get_migration_session, MigrationPhase
 from migrators.school_migrator import school_migrator
 from migrators.teacher_migrator import teacher_migrator
 from migrators.parent_migrator import parent_migrator
@@ -62,6 +63,11 @@ class MigrationRunner:
         logger.info(f"Dry run mode: {self.dry_run}")
         
         try:
+            # Step 0: Create migration session
+            session_id = f"migration_{self.start_time.strftime('%Y%m%d_%H%M%S')}"
+            session = create_migration_session(session_id)
+            logger.info(f"Created migration session: {session.session_id}")
+            
             # Step 1: Analyze schemas
             schema_analysis = await self.analyze_schemas()
             logger.info("Schema analysis complete")
@@ -74,11 +80,20 @@ class MigrationRunner:
             # Step 3: Run migrations in sequence
             await self._run_sequential_migration()
             
-            # Step 4: Validate migration
-            if not self.dry_run:
-                validation_result = await self._validate_migration()
-                logger.info(f"Migration validation: {validation_result}")
+            # Step 4: Validate migration consistency
+            validation_result = await session.validate_school_consistency()
+            logger.info(f"School consistency validation: {validation_result}")
             
+            # Step 5: Print session summary
+            summary = session.get_session_summary()
+            logger.info(f"Migration session summary: {summary}")
+            
+            # Step 6: Validate migration (if not dry run)
+            if not self.dry_run:
+                migration_validation = await self._validate_migration()
+                logger.info(f"Migration validation: {migration_validation}")
+            
+            await session.start_phase(MigrationPhase.COMPLETION)
             logger.info("Migration completed successfully")
             
         except Exception as e:

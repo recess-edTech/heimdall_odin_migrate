@@ -54,7 +54,7 @@ class MigrationSession:
     Ensures data consistency and proper entity-to-school mapping
     """
     
-    def __init__(self, session_id: str = None):
+    def __init__(self, session_id: Optional[str] = None):
         self.session_id = session_id or f"migration_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         self.current_phase = MigrationPhase.INITIALIZATION
         self.start_time = datetime.now()
@@ -172,8 +172,8 @@ class MigrationSession:
             # Update school with curriculum assignment
             await db_manager.execute_query(
                 'UPDATE "School" SET curriculum_id = $1 WHERE id = $2',
-                [curriculum["id"], v2_school_id],
-                db='v2'
+                {"curriculum_id": curriculum["id"], "school_id": v2_school_id},
+                engine_version='v2'
             )
             
             logger.info(f"Curriculum assigned: School({v2_school_id}) -> Curriculum({curriculum['name']})")
@@ -194,7 +194,7 @@ class MigrationSession:
             WHERE c.is_active = true
             ORDER BY c.name
         '''
-        return await db_manager.fetch_all(query, db='v2')
+        return await db_manager.execute_query(query, engine_version='v2')
     
     async def _determine_school_curriculum(self, school_data: Dict[str, Any], 
                                          curriculums: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -401,7 +401,7 @@ def get_migration_session() -> Optional[MigrationSession]:
     return migration_session
 
 
-def create_migration_session(session_id: str = None) -> MigrationSession:
+def create_migration_session(session_id: Optional[str] = None) -> MigrationSession:
     """Create a new migration session"""
     global migration_session
     migration_session = MigrationSession(session_id)

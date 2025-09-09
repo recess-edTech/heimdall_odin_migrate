@@ -10,6 +10,7 @@ import pandas as pd
 from ..db_utils import db_manager
 from ..config import DEFAULT_CURRICULUM_ID, DEFAULT_GRADE_SYSTEM_ID, DEFAULT_CLASS_LEVEL_ID
 from ..user_utils import user_manager, UserType, UserData
+from ..migration_session import get_migration_session, MigrationPhase
 
 logger = logging.getLogger(__name__)
 
@@ -26,10 +27,21 @@ class SchoolMigrator:
         """Main method to migrate all schools"""
         logger.info("Starting school migration...")
         
+        # Get migration session
+        session = get_migration_session()
+        if not session:
+            logger.error("No active migration session - create one first")
+            return {"success": False, "error": "No active migration session"}
+        
+        # Start schools phase
+        await session.start_phase(MigrationPhase.SCHOOLS)
+        
         try:
             # Get all schools from V1
             v1_schools = await self._get_v1_schools()
             logger.info(f"Found {len(v1_schools)} schools in V1 database")
+            
+            session.stats["schools"]["total"] = len(v1_schools)
             
             # Migrate each school
             for school in v1_schools:
@@ -38,9 +50,13 @@ class SchoolMigrator:
                     self.migrated_count += 1
                 else:
                     self.failed_count += 1
+                    session.stats["schools"]["failed"] += 1
             
             # Create school admin users for each school
             await self._create_school_admin_users(v1_schools)
+            
+            # Validate all schools have curriculums assigned
+            await session.start_phase(MigrationPhase.CURRICULUMS)
             
             result = {
                 "success": True,
@@ -75,6 +91,8 @@ class SchoolMigrator:
     async def _migrate_single_school(self, v1_school: Dict[str, Any]) -> bool:
         """Migrate a single school from V1 to V2"""
         try:
+            session = get_migration_session()
+            
             # Map school level to class level (this might need customization)
             level_id = await self._map_school_level(v1_school.get('schoolLevel', 'PRIMARY'))
             
@@ -108,7 +126,14 @@ class SchoolMigrator:
             v2_school_id = await db_manager.insert_record("schools", school_data)
             
             if v2_school_id:
+                # Add to legacy mapping
                 self.school_mappings[v1_school['id']] = v2_school_id
+                
+                # Add to session mapping with curriculum validation
+                if session:
+                    session.add_school_mapping(v1_school['id'], v2_school_id, v1_school)
+                    await session.validate_and_assign_curriculum(v1_school['id'], v2_school_id, v1_school)
+                
                 logger.info(f"Migrated school: {v1_school['schoolname']} (V1: {v1_school['id']} -> V2: {v2_school_id})")
                 return True
             else:
@@ -131,6 +156,15 @@ class SchoolMigrator:
         }
         
         return level_mapping.get(v1_level, DEFAULT_CLASS_LEVEL_ID)
+    
+    def get_v2_school_id(self, v1_school_id: int) -> Optional[int]:
+        """Get V2 school ID from V1 school ID using migration session or fallback to local mapping"""
+        session = get_migration_session()
+        if session:
+            return session.get_v2_school_id(v1_school_id)
+        
+        # Fallback to local mapping for backwards compatibility
+        return self.school_mappings.get(v1_school_id)
     
     def _map_school_type(self, v1_type: str) -> str:
         """Map V1 school type to V2 school type"""

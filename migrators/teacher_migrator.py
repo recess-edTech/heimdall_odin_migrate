@@ -9,6 +9,7 @@ from datetime import datetime
 
 from ..db_utils import db_manager
 from ..user_utils import user_manager
+from ..migration_session import get_migration_session, MigrationPhase
 from .school_migrator import school_migrator
 
 logger = logging.getLogger(__name__)
@@ -26,10 +27,21 @@ class TeacherMigrator:
         """Main method to migrate all teachers"""
         logger.info("Starting teacher migration...")
         
+        # Get migration session
+        session = get_migration_session()
+        if not session:
+            logger.error("No active migration session - create one first")
+            return {"success": False, "error": "No active migration session"}
+        
+        # Start teachers phase
+        await session.start_phase(MigrationPhase.TEACHERS)
+        
         try:
             # Get all teachers from V1
             v1_teachers = await self._get_v1_teachers()
             logger.info(f"Found {len(v1_teachers)} teachers in V1 database")
+            
+            session.stats["teachers"]["total"] = len(v1_teachers)
             
             # Migrate each teacher
             for teacher in v1_teachers:
@@ -38,6 +50,7 @@ class TeacherMigrator:
                     self.migrated_count += 1
                 else:
                     self.failed_count += 1
+                    session.stats["teachers"]["failed"] += 1
             
             result = {
                 "success": True,
