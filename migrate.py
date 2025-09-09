@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Main migration script for migrating data from Heimdall to Odin
+Main migration script for migrating data from V1 schema to V2 schema
+Focuses on Users (Teachers, Parents, Students) migration with proper sequencing
 """
 
 import asyncio
@@ -11,139 +12,71 @@ from typing import List, Dict, Any
 import argparse
 from datetime import datetime
 
-from .config import DRY_RUN, LOG_LEVEL, BATCH_SIZE
-from .db_utils import db_manager
-from .utils import setup_logging, create_backup, validate_migration
+from config import DRY_RUN, LOG_LEVEL, BATCH_SIZE, MIGRATION_ORDER
+from db_utils import db_manager
+from utils import setup_logging, create_backup, validate_migration
+from user_utils import user_manager
+from migrators.school_migrator import school_migrator
+from migrators.teacher_migrator import teacher_migrator
+from migrators.parent_migrator import parent_migrator
+from migrators.student_migrator import student_migrator
 
 logger = logging.getLogger(__name__)
 
 
 class MigrationRunner:
-    """Main class for running data migration"""
+    """Main class for running data migration from V1 to V2 schema"""
     
     def __init__(self, dry_run: bool = DRY_RUN):
         self.dry_run = dry_run
         self.migration_log = []
+        self.start_time = datetime.now()
         
     async def analyze_schemas(self):
         """Analyze both database schemas to understand the migration requirements"""
         logger.info("Analyzing database schemas...")
         
         # Connect to both databases
-        heimdall_engine = await db_manager.connect_heimdall_async()
-        odin_engine = await db_manager.connect_odin_async()
+        v1_engine = await db_manager.connect_v1_async()
+        v2_engine = await db_manager.connect_v2_async()
         
         # Get table lists
-        heimdall_tables = await db_manager.get_table_list(heimdall_engine)
-        odin_tables = await db_manager.get_table_list(odin_engine)
+        v1_tables = await db_manager.get_table_list(v1_engine)
+        v2_tables = await db_manager.get_table_list(v2_engine)
         
-        logger.info(f"Heimdall tables: {len(heimdall_tables)}")
-        logger.info(f"Odin tables: {len(odin_tables)}")
+        logger.info(f"V1 database tables: {len(v1_tables)}")
+        logger.info(f"V2 database tables: {len(v2_tables)}")
         
         # Analyze schema differences
         schema_analysis = {
-            "heimdall_tables": heimdall_tables,
-            "odin_tables": odin_tables,
-            "common_tables": list(set(heimdall_tables) & set(odin_tables)),
-            "heimdall_only": list(set(heimdall_tables) - set(odin_tables)),
-            "odin_only": list(set(odin_tables) - set(heimdall_tables))
+            "v1_tables": v1_tables,
+            "v2_tables": v2_tables,
+            "timestamp": datetime.now()
         }
         
         return schema_analysis
     
-    async def get_table_mappings(self, schema_analysis: Dict) -> Dict[str, str]:
-        """
-        Define how tables from Heimdall map to tables in Odin
-        This needs to be customized based on your specific schema
-        """
-        
-        # Default 1:1 mapping for common tables
-        mappings = {}
-        for table in schema_analysis["common_tables"]:
-            mappings[table] = table
-            
-        # Add custom mappings here based on your schema analysis
-        # Example:
-        # mappings["heimdall_users"] = "odin_users"
-        # mappings["heimdall_posts"] = "odin_content"
-        
-        return mappings
-    
-    async def migrate_table(self, source_table: str, target_table: str, transform_func=None):
-        """Migrate data from one table to another"""
-        logger.info(f"Migrating {source_table} -> {target_table}")
-        
-        if self.dry_run:
-            logger.info(f"DRY RUN: Would migrate {source_table} to {target_table}")
-            return
-        
-        try:
-            # Read data from Heimdall
-            heimdall_engine = db_manager.connect_heimdall_sync()
-            df = db_manager.read_table_to_dataframe(source_table, heimdall_engine)
-            
-            if df.empty:
-                logger.warning(f"No data found in {source_table}")
-                return
-            
-            # Apply transformation if provided
-            if transform_func:
-                df = transform_func(df)
-            
-            # Write data to Odin in batches
-            odin_engine = db_manager.connect_odin_sync()
-            
-            for i in range(0, len(df), BATCH_SIZE):
-                batch = df.iloc[i:i+BATCH_SIZE]
-                batch.to_sql(target_table, odin_engine, if_exists='append', index=False)
-                logger.info(f"Migrated batch {i//BATCH_SIZE + 1} ({len(batch)} records)")
-            
-            self.migration_log.append({
-                "table": source_table,
-                "target": target_table,
-                "records": len(df),
-                "status": "success",
-                "timestamp": datetime.now()
-            })
-            
-            logger.info(f"Successfully migrated {len(df)} records from {source_table}")
-            
-        except Exception as e:
-            logger.error(f"Error migrating {source_table}: {e}")
-            self.migration_log.append({
-                "table": source_table,
-                "target": target_table,
-                "records": 0,
-                "status": "failed",
-                "error": str(e),
-                "timestamp": datetime.now()
-            })
-    
     async def run_migration(self):
         """Run the complete migration process"""
-        logger.info("Starting migration process...")
+        logger.info("Starting V1 to V2 migration process...")
+        logger.info(f"Dry run mode: {self.dry_run}")
         
         try:
             # Step 1: Analyze schemas
             schema_analysis = await self.analyze_schemas()
             logger.info("Schema analysis complete")
             
-            # Step 2: Get table mappings
-            table_mappings = await self.get_table_mappings(schema_analysis)
-            logger.info(f"Found {len(table_mappings)} table mappings")
-            
-            # Step 3: Create backup (if not dry run)
+            # Step 2: Create backup (if not dry run)
             if not self.dry_run:
                 backup_path = create_backup()
                 logger.info(f"Backup created at: {backup_path}")
             
-            # Step 4: Migrate each table
-            for source_table, target_table in table_mappings.items():
-                await self.migrate_table(source_table, target_table)
+            # Step 3: Run migrations in sequence
+            await self._run_sequential_migration()
             
-            # Step 5: Validate migration
+            # Step 4: Validate migration
             if not self.dry_run:
-                validation_result = await validate_migration(self.migration_log)
+                validation_result = await self._validate_migration()
                 logger.info(f"Migration validation: {validation_result}")
             
             logger.info("Migration completed successfully")
@@ -154,33 +87,134 @@ class MigrationRunner:
         finally:
             db_manager.close_connections()
     
+    async def _run_sequential_migration(self):
+        """Run migrations in the defined sequence"""
+        logger.info("Starting sequential migration...")
+        
+        # Step 1: Migrate Schools
+        if not self.dry_run:
+            logger.info("=== MIGRATING SCHOOLS ===")
+            school_result = await school_migrator.migrate_schools()
+            self._log_migration_step("schools", school_result)
+            
+            # Step 2: Migrate Teachers (requires schools)
+            logger.info("=== MIGRATING TEACHERS ===")
+            teacher_result = await teacher_migrator.migrate_teachers()
+            self._log_migration_step("teachers", teacher_result)
+            
+            # Step 3: Migrate Parents (requires schools)
+            logger.info("=== MIGRATING PARENTS ===")
+            parent_result = await parent_migrator.migrate_parents()
+            self._log_migration_step("parents", parent_result)
+            
+            # Step 4: Migrate Students (requires schools and parents)
+            logger.info("=== MIGRATING STUDENTS ===")
+            student_result = await student_migrator.migrate_students()
+            self._log_migration_step("students", student_result)
+            
+            # Additional migration steps can be added here
+            # Step 5: Migrate Streams, Classes, etc.
+            
+        else:
+            logger.info("DRY RUN: Would execute migration sequence:")
+            for step in MIGRATION_ORDER:
+                logger.info(f"  - {step.capitalize()}")
+    
+    def _log_migration_step(self, step_name: str, result: Dict[str, Any]):
+        """Log the result of a migration step"""
+        self.migration_log.append({
+            "step": step_name,
+            "result": result,
+            "timestamp": datetime.now()
+        })
+        
+        if result.get("success"):
+            logger.info(f"{step_name.capitalize()} migration: {result.get('migrated', 0)} migrated, {result.get('failed', 0)} failed")
+        else:
+            logger.error(f"{step_name.capitalize()} migration failed: {result.get('error', 'Unknown error')}")
+    
+    async def _validate_migration(self) -> Dict[str, Any]:
+        """Validate the migration results"""
+        logger.info("Validating migration results...")
+        
+        validation_results = {}
+        
+        # Count records in key tables
+        try:
+            # V2 record counts
+            users_count = await db_manager.execute_query("SELECT COUNT(*) as count FROM users")
+            schools_count = await db_manager.execute_query("SELECT COUNT(*) as count FROM schools")
+            teachers_count = await db_manager.execute_query("SELECT COUNT(*) as count FROM teachers")
+            parents_count = await db_manager.execute_query("SELECT COUNT(*) as count FROM parents")
+            students_count = await db_manager.execute_query("SELECT COUNT(*) as count FROM students")
+            
+            validation_results = {
+                "v2_users": users_count[0]['count'] if users_count else 0,
+                "v2_schools": schools_count[0]['count'] if schools_count else 0,
+                "v2_teachers": teachers_count[0]['count'] if teachers_count else 0,
+                "v2_parents": parents_count[0]['count'] if parents_count else 0,
+                "v2_students": students_count[0]['count'] if students_count else 0,
+                "migration_successful": True
+            }
+            
+            # V1 record counts for comparison
+            v1_schools = await db_manager.execute_query("SELECT COUNT(*) as count FROM \"School\" WHERE \"isDeleted\" = false", engine_version="v1")
+            v1_teachers = await db_manager.execute_query("SELECT COUNT(*) as count FROM \"Teacher\" WHERE \"isDeleted\" = false", engine_version="v1")
+            v1_parents = await db_manager.execute_query("SELECT COUNT(*) as count FROM \"Parent\" WHERE \"isDeleted\" = false", engine_version="v1")
+            v1_students = await db_manager.execute_query("SELECT COUNT(*) as count FROM \"Student\" WHERE \"isDeleted\" = false", engine_version="v1")
+            
+            validation_results.update({
+                "v1_schools": v1_schools[0]['count'] if v1_schools else 0,
+                "v1_teachers": v1_teachers[0]['count'] if v1_teachers else 0,
+                "v1_parents": v1_parents[0]['count'] if v1_parents else 0,
+                "v1_students": v1_students[0]['count'] if v1_students else 0,
+            })
+            
+        except Exception as e:
+            logger.error(f"Validation failed: {e}")
+            validation_results["migration_successful"] = False
+            validation_results["error"] = str(e)
+        
+        return validation_results
+    
     def print_summary(self):
         """Print migration summary"""
-        print("\n" + "="*50)
+        print("\n" + "="*70)
         print("MIGRATION SUMMARY")
-        print("="*50)
+        print("="*70)
         
-        successful = len([log for log in self.migration_log if log["status"] == "success"])
-        failed = len([log for log in self.migration_log if log["status"] == "failed"])
-        total_records = sum([log["records"] for log in self.migration_log if log["status"] == "success"])
+        duration = datetime.now() - self.start_time
+        print(f"Total duration: {duration}")
+        print(f"Dry run mode: {self.dry_run}")
         
-        print(f"Total tables processed: {len(self.migration_log)}")
-        print(f"Successful migrations: {successful}")
-        print(f"Failed migrations: {failed}")
-        print(f"Total records migrated: {total_records}")
+        if self.migration_log:
+            print("\nMigration Steps:")
+            for log_entry in self.migration_log:
+                step = log_entry["step"]
+                result = log_entry["result"]
+                
+                if result.get("success"):
+                    migrated = result.get("migrated", 0)
+                    failed = result.get("failed", 0)
+                    total = result.get("total", 0)
+                    print(f"  {step.capitalize()}: {migrated}/{total} migrated ({failed} failed)")
+                else:
+                    print(f"  {step.capitalize()}: FAILED - {result.get('error', 'Unknown error')}")
         
-        if failed > 0:
-            print("\nFailed migrations:")
-            for log in self.migration_log:
-                if log["status"] == "failed":
-                    print(f"  - {log['table']}: {log.get('error', 'Unknown error')}")
+        # Print user manager stats
+        user_stats = user_manager.get_mapping_stats()
+        print(f"\nUser Creation Stats:")
+        print(f"  Total users created: {user_stats['total_users_created']}")
+        print(f"  Unique emails generated: {user_stats['unique_emails_generated']}")
+        print(f"  Unique phones generated: {user_stats['unique_phones_generated']}")
 
 
 async def main():
     """Main function"""
-    parser = argparse.ArgumentParser(description="Migrate data from Heimdall to Odin")
+    parser = argparse.ArgumentParser(description="Migrate data from V1 schema to V2 schema")
     parser.add_argument("--dry-run", action="store_true", help="Run in dry-run mode")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
+    parser.add_argument("--step", choices=MIGRATION_ORDER, help="Run only specific migration step")
     
     args = parser.parse_args()
     
@@ -192,7 +226,13 @@ async def main():
     runner = MigrationRunner(dry_run=args.dry_run or DRY_RUN)
     
     try:
-        await runner.run_migration()
+        if args.step:
+            logger.info(f"Running single migration step: {args.step}")
+            # TODO: Implement single step execution
+            logger.warning("Single step execution not implemented yet")
+        else:
+            await runner.run_migration()
+        
         runner.print_summary()
     except KeyboardInterrupt:
         logger.info("Migration cancelled by user")
