@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+
 """
 Migration Status Checker
 Provides comprehensive status information about the migration system
@@ -40,19 +40,19 @@ async def check_database_connection(db_config: Dict[str, Any], name: str) -> Dic
         else:
             conn = await db_manager.connect_v2_async()
             
-        # Test connection with a simple query
+        
         version_result = await conn.fetchrow("SELECT version() as version")
         result["version"] = version_result["version"]
         result["connected"] = True
         
-        # Get database size
+        
         size_query = f"""
         SELECT pg_size_pretty(pg_database_size('{db_config["database"]}')) as size
         """
         size_result = await conn.fetchrow(size_query)
         result["size"] = size_result["size"]
         
-        # Count tables
+        
         tables_result = await conn.fetchrow("""
         SELECT COUNT(*) as table_count 
         FROM information_schema.tables 
@@ -75,39 +75,39 @@ async def get_migration_counts() -> Dict[str, Dict[str, int]]:
     try:
         db_manager = DatabaseManager()
         
-        # V1 counts
+        
         v1_conn = await db_manager.connect_v1_async()
         
-        # Schools
+        
         schools_result = await v1_conn.fetchrow('SELECT COUNT(*) as count FROM "School"')
         counts["v1"]["schools"] = schools_result["count"]
         
-        # Teachers  
+        
         teachers_result = await v1_conn.fetchrow('SELECT COUNT(*) as count FROM "Teacher"')
         counts["v1"]["teachers"] = teachers_result["count"]
         
-        # Parents
+        
         parents_result = await v1_conn.fetchrow('SELECT COUNT(*) as count FROM "Parent"')
         counts["v1"]["parents"] = parents_result["count"]
         
-        # Students
+        
         students_result = await v1_conn.fetchrow('SELECT COUNT(*) as count FROM "Student"')
         counts["v1"]["students"] = students_result["count"]
         
         await v1_conn.close()
         
-        # V2 counts
+        
         v2_conn = await db_manager.connect_v2_async()
         
-        # Schools
+        
         v2_schools_result = await v2_conn.fetchrow('SELECT COUNT(*) as count FROM "School"')
         counts["v2"]["schools"] = v2_schools_result["count"]
         
-        # Users (all types)
+        
         v2_users_result = await v2_conn.fetchrow('SELECT COUNT(*) as count FROM "User"')
         counts["v2"]["users"] = v2_users_result["count"]
         
-        # Teachers (via UserRole)
+        
         v2_teachers_result = await v2_conn.fetchrow("""
         SELECT COUNT(*) as count 
         FROM "UserRole" ur 
@@ -116,7 +116,7 @@ async def get_migration_counts() -> Dict[str, Dict[str, int]]:
         """)
         counts["v2"]["teachers"] = v2_teachers_result["count"]
         
-        # Parents (via UserRole)
+        
         v2_parents_result = await v2_conn.fetchrow("""
         SELECT COUNT(*) as count 
         FROM "UserRole" ur 
@@ -125,7 +125,7 @@ async def get_migration_counts() -> Dict[str, Dict[str, int]]:
         """)
         counts["v2"]["parents"] = v2_parents_result["count"]
         
-        # Students (via UserRole)
+        
         v2_students_result = await v2_conn.fetchrow("""
         SELECT COUNT(*) as count 
         FROM "UserRole" ur 
@@ -151,7 +151,7 @@ def create_connection_table(v1_status: Dict, v2_status: Dict) -> Table:
     table.add_column("Size", style="blue")
     table.add_column("Tables", style="magenta")
     
-    # V1 row
+    
     v1_status_str = "✅ Connected" if v1_status["connected"] else f"❌ Failed: {v1_status['error']}"
     table.add_row(
         "V1 (Source)",
@@ -161,7 +161,7 @@ def create_connection_table(v1_status: Dict, v2_status: Dict) -> Table:
         str(v1_status["tables"])
     )
     
-    # V2 row
+    
     v2_status_str = "✅ Connected" if v2_status["connected"] else f"❌ Failed: {v2_status['error']}"
     table.add_row(
         "V2 (Target)",
@@ -189,16 +189,16 @@ def create_migration_table(counts: Dict) -> Table:
         v2_count = counts.get("v2", {}).get(entity, 0)
         
         if entity == "teachers":
-            # For teachers, compare V1 teachers to V2 teacher roles
+            
             progress = f"{v2_count}/{v1_count}" if v1_count > 0 else "0/0"
         elif entity == "parents":
-            # For parents, compare V1 parents to V2 parent roles  
+            
             progress = f"{v2_count}/{v1_count}" if v1_count > 0 else "0/0"
         elif entity == "students":
-            # For students, compare V1 students to V2 student roles
+            
             progress = f"{v2_count}/{v1_count}" if v1_count > 0 else "0/0"
         else:
-            # For schools, direct comparison
+            
             progress = f"{v2_count}/{v1_count}" if v1_count > 0 else "0/0"
         
         table.add_row(
@@ -208,7 +208,7 @@ def create_migration_table(counts: Dict) -> Table:
             progress
         )
     
-    # Add total users row
+    
     total_users = counts.get("v2", {}).get("users", 0)
     table.add_row(
         "Total Users",
@@ -230,7 +230,7 @@ async def main():
         console=console
     ) as progress:
         
-        # Check database connections
+        
         task1 = progress.add_task("Checking database connections...", total=None)
         
         v1_status, v2_status = await asyncio.gather(
@@ -240,18 +240,18 @@ async def main():
         
         progress.update(task1, description="✅ Database connections checked")
         
-        # Get migration counts
+        
         task2 = progress.add_task("Gathering migration statistics...", total=None)
         counts = await get_migration_counts()
         progress.update(task2, description="✅ Migration statistics gathered")
     
-    # Display results
+    
     console.print()
     console.print(create_connection_table(v1_status, v2_status))
     console.print()
     console.print(create_migration_table(counts))
     
-    # Summary panel
+    
     both_connected = v1_status["connected"] and v2_status["connected"]
     
     if both_connected:
@@ -269,7 +269,7 @@ async def main():
         border_style=panel_style
     ))
     
-    # Exit with error code if connections failed
+    
     if not both_connected:
         sys.exit(1)
 

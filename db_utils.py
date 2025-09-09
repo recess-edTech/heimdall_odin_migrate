@@ -10,7 +10,7 @@ from sqlalchemy import create_engine, text, MetaData
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 
-from ..config.config import V1_DB_CONFIG, V2_DB_CONFIG
+from config import V1_DB_CONFIG, V2_DB_CONFIG
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +113,7 @@ class DatabaseManager:
             logger.error(f"Error reading table {table_name}: {e}")
             return pd.DataFrame()
     
-    async def execute_query(self, query: str, params: Dict = None, engine_version: str = "v2") -> List[Dict]:
+    async def execute_query(self, query: str, params: Optional[Dict] = None, engine_version: str = "v2") -> List[Dict]:
         """Execute a query and return results"""
         engine = await self.connect_v2_async() if engine_version == "v2" else await self.connect_v1_async()
         
