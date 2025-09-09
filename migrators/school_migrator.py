@@ -232,9 +232,6 @@ class SchoolMigrator:
             return words[0]
         return "School"
     
-    def get_v2_school_id(self, v1_school_id: str) -> Optional[int]:
-        """Get V2 school ID from V1 school ID"""
-        return self.school_mappings.get(v1_school_id)
     
     def get_mapping_stats(self) -> Dict[str, int]:
         """Get statistics about school migration"""
