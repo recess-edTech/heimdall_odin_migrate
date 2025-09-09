@@ -9,6 +9,7 @@ from datetime import datetime, date
 
 from ..db_utils import db_manager
 from ..user_utils import user_manager
+from ..migration_session import get_migration_session, MigrationPhase
 from .school_migrator import school_migrator
 from .parent_migrator import parent_migrator
 from ..config import DEFAULT_CLASS_LEVEL_ID
@@ -29,10 +30,21 @@ class StudentMigrator:
         """Main method to migrate all students"""
         logger.info("Starting student migration...")
         
+        # Get migration session
+        session = get_migration_session()
+        if not session:
+            logger.error("No active migration session - create one first")
+            return {"success": False, "error": "No active migration session"}
+        
+        # Start students phase
+        await session.start_phase(MigrationPhase.STUDENTS)
+        
         try:
             # Get all students from V1
             v1_students = await self._get_v1_students()
             logger.info(f"Found {len(v1_students)} students in V1 database")
+            
+            session.stats["students"]["total"] = len(v1_students)
             
             # Migrate each student
             for student in v1_students:
@@ -41,6 +53,7 @@ class StudentMigrator:
                     self.migrated_count += 1
                 else:
                     self.failed_count += 1
+                    session.stats["students"]["failed"] += 1
             
             # Create student-parent relationships
             await self._create_student_parent_relationships()
@@ -76,13 +89,43 @@ class StudentMigrator:
         return await db_manager.execute_query(query, engine_version="v1")
     
     async def _migrate_single_student(self, v1_student: Dict[str, Any]) -> bool:
-        """Migrate a single student from V1 to V2"""
+        """Migrate a single student from V1 to V2 with strict school validation"""
         try:
-            # Get V2 school ID from mapping
-            v2_school_id = school_migrator.get_v2_school_id(v1_student['schoolid'])
-            if not v2_school_id:
-                logger.error(f"No V2 school found for V1 school ID: {v1_student['schoolid']}")
+            session = get_migration_session()
+            
+            # CRITICAL: Validate V1 school exists in migration session
+            v1_school_id = v1_student.get('schoolid')
+            if not v1_school_id:
+                logger.error(f"Student {v1_student.get('firstname', '')} {v1_student.get('lastname', '')} has no school ID")
                 return False
+            
+            # Validate the V1 school was successfully migrated
+            if session and not session.validate_v1_school_reference(v1_school_id, "student", v1_student):
+                return False
+            
+            # Get V2 school ID from session (more reliable than direct migrator call)
+            if session:
+                v2_school_id = session.get_v2_school_id(v1_school_id)
+            else:
+                # Fallback for when session isn't available (shouldn't happen)
+                v2_school_id = school_migrator.get_v2_school_id(v1_school_id)
+            
+            if not v2_school_id:
+                error_msg = f"No V2 school mapping found for student {v1_student.get('firstname', '')} {v1_student.get('lastname', '')} with V1 school ID: {v1_school_id}"
+                logger.error(error_msg)
+                if session:
+                    session.validation_errors.append(error_msg)
+                return False
+            
+            # Verify school exists in session
+            if session and not session.validate_school_exists(v2_school_id):
+                error_msg = f"V2 School ID {v2_school_id} does not exist in migration session for student {v1_student.get('firstname', '')} {v1_student.get('lastname', '')}"
+                logger.error(error_msg)
+                return False
+            
+            # Log school assignment for audit trail
+            school_info = session.get_school_info(v2_school_id) if session else None
+            logger.info(f"Migrating student {v1_student.get('firstname', '')} {v1_student.get('lastname', '')} to school: {school_info.get('name', 'Unknown') if school_info else 'Unknown'} (V2 ID: {v2_school_id})")
             
             # Step 1: Create User record
             user_id = await user_manager.create_student_user(v1_student, v2_school_id)
@@ -115,8 +158,15 @@ class StudentMigrator:
             # Insert student
             await db_manager.insert_record("students", student_data)
             
-            # Store mapping and parent relationship info
+            # Store mapping in local store
             self.student_mappings[v1_student['id']] = user_id
+            
+            # Store mapping in session with validation
+            if session:
+                success = session.add_student_mapping(v1_student['id'], user_id, v2_school_id, v1_student)
+                if not success:
+                    logger.error(f"Failed to add student mapping to session for {v1_student.get('firstname', '')} {v1_student.get('lastname', '')}")
+                    return False
             
             if v1_student.get('parentid'):
                 self.student_parent_relationships.append({
@@ -125,7 +175,7 @@ class StudentMigrator:
                     "student_user_id": user_id
                 })
             
-            logger.info(f"Migrated student: {v1_student['firstname']} {v1_student['lastname']} (User ID: {user_id})")
+            logger.info(f"Successfully migrated student: {v1_student['firstname']} {v1_student['lastname']} (User ID: {user_id}) to school {school_info.get('name', 'Unknown') if school_info else 'Unknown'}")
             return True
                 
         except Exception as e:

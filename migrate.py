@@ -17,6 +17,7 @@ from db_utils import db_manager
 from utils import setup_logging, create_backup, validate_migration
 from user_utils import user_manager
 from migration_session import create_migration_session, get_migration_session, MigrationPhase
+from validation_utils import migration_validator
 from migrators.school_migrator import school_migrator
 from migrators.teacher_migrator import teacher_migrator
 from migrators.parent_migrator import parent_migrator
@@ -68,6 +69,31 @@ class MigrationRunner:
             session = create_migration_session(session_id)
             logger.info(f"Created migration session: {session.session_id}")
             
+            # Step 0.5: CRITICAL - Validate V1 data integrity before migration
+            logger.info("=== VALIDATING V1 DATA INTEGRITY ===")
+            v1_validation = await migration_validator.validate_v1_data_integrity()
+            
+            if not v1_validation.is_valid:
+                logger.error("V1 data validation failed - cannot proceed with migration")
+                for error in v1_validation.errors:
+                    logger.error(f"VALIDATION ERROR: {error}")
+                logger.info("V1 validation details:")
+                for category, details in v1_validation.details.items():
+                    logger.info(f"  {category}: {details}")
+                
+                raise ValueError("V1 data integrity validation failed - fix data issues before migration")
+            
+            # Log validation warnings
+            if v1_validation.warnings:
+                logger.warning("V1 data validation warnings:")
+                for warning in v1_validation.warnings:
+                    logger.warning(f"  {warning}")
+            
+            logger.info("V1 data integrity validation passed")
+            logger.info("V1 validation summary:")
+            for category, details in v1_validation.details.items():
+                logger.info(f"  {category}: {details}")
+            
             # Step 1: Analyze schemas
             schema_analysis = await self.analyze_schemas()
             logger.info("Schema analysis complete")
@@ -81,6 +107,24 @@ class MigrationRunner:
             await self._run_sequential_migration()
             
             # Step 4: Validate migration consistency
+            logger.info("=== VALIDATING MIGRATION SESSION INTEGRITY ===")
+            session_validation = await migration_validator.validate_migration_session_integrity()
+            
+            if not session_validation.is_valid:
+                logger.error("Migration session validation failed")
+                for error in session_validation.errors:
+                    logger.error(f"SESSION ERROR: {error}")
+            else:
+                logger.info("Migration session validation passed")
+            
+            if session_validation.warnings:
+                for warning in session_validation.warnings:
+                    logger.warning(f"SESSION WARNING: {warning}")
+            
+            logger.info("Session validation details:")
+            for key, value in session_validation.details.items():
+                logger.info(f"  {key}: {value}")
+            
             validation_result = await session.validate_school_consistency()
             logger.info(f"School consistency validation: {validation_result}")
             

@@ -251,9 +251,45 @@ class MigrationSession:
         
         return best_curriculum
     
+    def validate_school_exists(self, v2_school_id: int) -> bool:
+        """Validate that a school exists in the migration session"""
+        for mapping in self.school_mappings.values():
+            if mapping.v2_id == v2_school_id:
+                return True
+        return False
+    
+    def get_school_info(self, v2_school_id: int) -> Optional[Dict[str, Any]]:
+        """Get school information by V2 school ID"""
+        for mapping in self.school_mappings.values():
+            if mapping.v2_id == v2_school_id:
+                return {
+                    "v1_id": mapping.v1_id,
+                    "v2_id": mapping.v2_id,
+                    "name": mapping.metadata.get("name", ""),
+                    "code": mapping.metadata.get("code", ""),
+                    "created_at": mapping.created_at
+                }
+        return None
+    
     def add_teacher_mapping(self, v1_id: int, v2_user_id: int, v2_school_id: int, 
                           teacher_data: Dict[str, Any]) -> bool:
-        """Add teacher mapping with school association"""
+        """Add teacher mapping with strict school validation"""
+        # CRITICAL: Validate school exists before adding teacher
+        if not self.validate_school_exists(v2_school_id):
+            error_msg = f"Cannot add teacher {teacher_data.get('firstname', '')} {teacher_data.get('lastname', '')}: School ID {v2_school_id} does not exist in migration session"
+            self.validation_errors.append(error_msg)
+            logger.error(error_msg)
+            return False
+        
+        # Validate teacher has required data
+        if not teacher_data.get('email'):
+            error_msg = f"Cannot add teacher V1({v1_id}): Missing email address"
+            self.validation_errors.append(error_msg)
+            logger.error(error_msg)
+            return False
+        
+        school_info = self.get_school_info(v2_school_id)
+        
         mapping = MigrationMapping(
             v1_id=v1_id,
             v2_id=v2_user_id,
@@ -261,7 +297,9 @@ class MigrationSession:
             school_id=v2_school_id,
             metadata={
                 "name": f"{teacher_data.get('firstname', '')} {teacher_data.get('lastname', '')}",
-                "email": teacher_data.get('email', '')
+                "email": teacher_data.get('email', ''),
+                "school_name": school_info.get("name", "") if school_info else "",
+                "v1_school_id": school_info.get("v1_id") if school_info else None
             }
         )
         
@@ -270,14 +308,36 @@ class MigrationSession:
         # Associate teacher with school
         if v2_school_id in self.school_teachers:
             self.school_teachers[v2_school_id].add(v2_user_id)
+        else:
+            # This should not happen if validation passed, but safety check
+            error_msg = f"School {v2_school_id} not found in school_teachers mapping"
+            self.validation_errors.append(error_msg)
+            logger.error(error_msg)
+            return False
         
         self.stats["teachers"]["migrated"] += 1
-        logger.info(f"Teacher mapping added: V1({v1_id}) -> V2_User({v2_user_id}) @ School({v2_school_id})")
+        logger.info(f"Teacher mapping added: V1({v1_id}) -> V2_User({v2_user_id}) @ School({v2_school_id}) [{school_info.get('name', '') if school_info else 'Unknown'}]")
         return True
     
     def add_parent_mapping(self, v1_id: int, v2_user_id: int, v2_school_id: int, 
                          parent_data: Dict[str, Any]) -> bool:
-        """Add parent mapping with school association"""
+        """Add parent mapping with strict school validation"""
+        # CRITICAL: Validate school exists before adding parent
+        if not self.validate_school_exists(v2_school_id):
+            error_msg = f"Cannot add parent {parent_data.get('firstname', '')} {parent_data.get('lastname', '')}: School ID {v2_school_id} does not exist in migration session"
+            self.validation_errors.append(error_msg)
+            logger.error(error_msg)
+            return False
+        
+        # Validate parent has required data
+        if not parent_data.get('email'):
+            error_msg = f"Cannot add parent V1({v1_id}): Missing email address"
+            self.validation_errors.append(error_msg)
+            logger.error(error_msg)
+            return False
+        
+        school_info = self.get_school_info(v2_school_id)
+        
         mapping = MigrationMapping(
             v1_id=v1_id,
             v2_id=v2_user_id,
@@ -285,7 +345,9 @@ class MigrationSession:
             school_id=v2_school_id,
             metadata={
                 "name": f"{parent_data.get('firstname', '')} {parent_data.get('lastname', '')}",
-                "email": parent_data.get('email', '')
+                "email": parent_data.get('email', ''),
+                "school_name": school_info.get("name", "") if school_info else "",
+                "v1_school_id": school_info.get("v1_id") if school_info else None
             }
         )
         
@@ -294,14 +356,36 @@ class MigrationSession:
         # Associate parent with school
         if v2_school_id in self.school_parents:
             self.school_parents[v2_school_id].add(v2_user_id)
+        else:
+            # This should not happen if validation passed, but safety check
+            error_msg = f"School {v2_school_id} not found in school_parents mapping"
+            self.validation_errors.append(error_msg)
+            logger.error(error_msg)
+            return False
         
         self.stats["parents"]["migrated"] += 1
-        logger.info(f"Parent mapping added: V1({v1_id}) -> V2_User({v2_user_id}) @ School({v2_school_id})")
+        logger.info(f"Parent mapping added: V1({v1_id}) -> V2_User({v2_user_id}) @ School({v2_school_id}) [{school_info.get('name', '') if school_info else 'Unknown'}]")
         return True
     
     def add_student_mapping(self, v1_id: int, v2_user_id: int, v2_school_id: int, 
                           student_data: Dict[str, Any]) -> bool:
-        """Add student mapping with school association"""
+        """Add student mapping with strict school validation"""
+        # CRITICAL: Validate school exists before adding student
+        if not self.validate_school_exists(v2_school_id):
+            error_msg = f"Cannot add student {student_data.get('firstname', '')} {student_data.get('lastname', '')}: School ID {v2_school_id} does not exist in migration session"
+            self.validation_errors.append(error_msg)
+            logger.error(error_msg)
+            return False
+        
+        # Validate student has required data
+        if not student_data.get('email') and not student_data.get('admissionNumber'):
+            error_msg = f"Cannot add student V1({v1_id}): Missing both email and admission number"
+            self.validation_errors.append(error_msg)
+            logger.error(error_msg)
+            return False
+        
+        school_info = self.get_school_info(v2_school_id)
+        
         mapping = MigrationMapping(
             v1_id=v1_id,
             v2_id=v2_user_id,
@@ -309,7 +393,10 @@ class MigrationSession:
             school_id=v2_school_id,
             metadata={
                 "name": f"{student_data.get('firstname', '')} {student_data.get('lastname', '')}",
-                "email": student_data.get('email', '')
+                "email": student_data.get('email', ''),
+                "admission_number": student_data.get('admissionNumber', ''),
+                "school_name": school_info.get("name", "") if school_info else "",
+                "v1_school_id": school_info.get("v1_id") if school_info else None
             }
         )
         
@@ -318,12 +405,98 @@ class MigrationSession:
         # Associate student with school
         if v2_school_id in self.school_students:
             self.school_students[v2_school_id].add(v2_user_id)
+        else:
+            # This should not happen if validation passed, but safety check
+            error_msg = f"School {v2_school_id} not found in school_students mapping"
+            self.validation_errors.append(error_msg)
+            logger.error(error_msg)
+            return False
         
         self.stats["students"]["migrated"] += 1
-        logger.info(f"Student mapping added: V1({v1_id}) -> V2_User({v2_user_id}) @ School({v2_school_id})")
+        logger.info(f"Student mapping added: V1({v1_id}) -> V2_User({v2_user_id}) @ School({v2_school_id}) [{school_info.get('name', '') if school_info else 'Unknown'}]")
+        return True
+    
+    def validate_v1_school_reference(self, v1_school_id: int, entity_type: str, entity_data: Dict[str, Any]) -> bool:
+        """Validate that a V1 school reference exists in the migration session"""
+        v2_school_id = self.get_v2_school_id(v1_school_id)
+        
+        if not v2_school_id:
+            entity_name = f"{entity_data.get('firstname', '')} {entity_data.get('lastname', '')}"
+            error_msg = f"Cannot migrate {entity_type} '{entity_name}' (V1 ID: {entity_data.get('id', 'Unknown')}): V1 School ID {v1_school_id} was not successfully migrated"
+            self.validation_errors.append(error_msg)
+            logger.error(error_msg)
+            return False
+        
         return True
     
     async def validate_school_consistency(self) -> Dict[str, Any]:
+        """Validate that all entities are correctly associated with their schools"""
+        validation_results = {
+            "is_valid": True,
+            "errors": [],
+            "warnings": [],
+            "school_summaries": {}
+        }
+        
+        for v2_school_id, curriculum_mapping in self.school_curriculums.items():
+            school_mapping = None
+            for mapping in self.school_mappings.values():
+                if mapping.v2_id == v2_school_id:
+                    school_mapping = mapping
+                    break
+            
+            if not school_mapping:
+                error = f"School ID {v2_school_id} has curriculum but no school mapping"
+                validation_results["errors"].append(error)
+                validation_results["is_valid"] = False
+                continue
+            
+            # Validate school has entities
+            teacher_count = len(self.school_teachers.get(v2_school_id, set()))
+            parent_count = len(self.school_parents.get(v2_school_id, set()))
+            student_count = len(self.school_students.get(v2_school_id, set()))
+            
+            validation_results["school_summaries"][v2_school_id] = {
+                "name": school_mapping.metadata.get("name", ""),
+                "curriculum": curriculum_mapping.curriculum_name,
+                "teachers": teacher_count,
+                "parents": parent_count,
+                "students": student_count
+            }
+            
+            # Warnings for unusual patterns
+            if teacher_count == 0:
+                validation_results["warnings"].append(f"School '{school_mapping.metadata.get('name')}' has no teachers")
+            
+            if student_count == 0:
+                validation_results["warnings"].append(f"School '{school_mapping.metadata.get('name')}' has no students")
+            
+            if student_count > 0 and parent_count == 0:
+                validation_results["warnings"].append(f"School '{school_mapping.metadata.get('name')}' has students but no parents")
+        
+        return validation_results
+        """Get detailed migration statistics with validation info"""
+        return {
+            "session_id": self.session_id,
+            "phase": self.current_phase.value,
+            "schools": {
+                "total_mapped": len(self.school_mappings),
+                "with_curriculum": len(self.school_curriculums),
+                "with_teachers": len([s for s in self.school_teachers.values() if s]),
+                "with_parents": len([s for s in self.school_parents.values() if s]),
+                "with_students": len([s for s in self.school_students.values() if s])
+            },
+            "entities": {
+                "teachers": len(self.teacher_mappings),
+                "parents": len(self.parent_mappings),
+                "students": len(self.student_mappings)
+            },
+            "validation": {
+                "errors": len(self.validation_errors),
+                "warnings": len(self.validation_warnings)
+            },
+            "duration": (datetime.now() - self.start_time).total_seconds()
+        }
         """Validate that all entities are correctly associated with their schools"""
         validation_results = {
             "is_valid": True,

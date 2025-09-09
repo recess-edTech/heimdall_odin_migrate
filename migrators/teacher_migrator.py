@@ -84,13 +84,43 @@ class TeacherMigrator:
         return await db_manager.execute_query(query, engine_version="v1")
     
     async def _migrate_single_teacher(self, v1_teacher: Dict[str, Any]) -> bool:
-        """Migrate a single teacher from V1 to V2"""
+        """Migrate a single teacher from V1 to V2 with strict school validation"""
         try:
-            # Get V2 school ID from mapping
-            v2_school_id = school_migrator.get_v2_school_id(v1_teacher['schoolid'])
-            if not v2_school_id:
-                logger.error(f"No V2 school found for V1 school ID: {v1_teacher['schoolid']}")
+            session = get_migration_session()
+            
+            # CRITICAL: Validate V1 school exists in migration session
+            v1_school_id = v1_teacher.get('schoolid')
+            if not v1_school_id:
+                logger.error(f"Teacher {v1_teacher.get('firstname', '')} {v1_teacher.get('lastname', '')} has no school ID")
                 return False
+            
+            # Validate the V1 school was successfully migrated
+            if session and not session.validate_v1_school_reference(v1_school_id, "teacher", v1_teacher):
+                return False
+            
+            # Get V2 school ID from session (more reliable than direct migrator call)
+            if session:
+                v2_school_id = session.get_v2_school_id(v1_school_id)
+            else:
+                # Fallback for when session isn't available (shouldn't happen)
+                v2_school_id = school_migrator.get_v2_school_id(v1_school_id)
+            
+            if not v2_school_id:
+                error_msg = f"No V2 school mapping found for teacher {v1_teacher.get('firstname', '')} {v1_teacher.get('lastname', '')} with V1 school ID: {v1_school_id}"
+                logger.error(error_msg)
+                if session:
+                    session.validation_errors.append(error_msg)
+                return False
+            
+            # Verify school exists in session
+            if session and not session.validate_school_exists(v2_school_id):
+                error_msg = f"V2 School ID {v2_school_id} does not exist in migration session for teacher {v1_teacher.get('firstname', '')} {v1_teacher.get('lastname', '')}"
+                logger.error(error_msg)
+                return False
+            
+            # Log school assignment for audit trail
+            school_info = session.get_school_info(v2_school_id) if session else None
+            logger.info(f"Migrating teacher {v1_teacher.get('firstname', '')} {v1_teacher.get('lastname', '')} to school: {school_info.get('name', 'Unknown') if school_info else 'Unknown'} (V2 ID: {v2_school_id})")
             
             # Step 1: Create User record
             user_id = await user_manager.create_teacher_user(v1_teacher, v2_school_id)
@@ -115,9 +145,18 @@ class TeacherMigrator:
             # Insert teacher
             await db_manager.insert_record("teachers", teacher_data)
             
-            # Store mapping
+            # Store mapping in local store
             self.teacher_mappings[v1_teacher['id']] = user_id  # Map to user_id, not teacher_id
-            logger.info(f"Migrated teacher: {v1_teacher['firstname']} {v1_teacher['lastname']} (User ID: {user_id})")
+            
+            # Store mapping in session with validation
+            if session:
+                success = session.add_teacher_mapping(v1_teacher['id'], user_id, v2_school_id, v1_teacher)
+                if not success:
+                    logger.error(f"Failed to add teacher mapping to session for {v1_teacher.get('firstname', '')} {v1_teacher.get('lastname', '')}")
+                    return False
+            
+            logger.info(f"Successfully migrated teacher: {v1_teacher['firstname']} {v1_teacher['lastname']} (User ID: {user_id}) to school {school_info.get('name', 'Unknown') if school_info else 'Unknown'}")
+            return True
             return True
                 
         except Exception as e:
