@@ -258,16 +258,6 @@ python migrate.py --filter "created_at > '2024-01-01'"
 python migrate.py --skip-validation
 ```
 
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create feature branch: `git checkout -b feature/new-migrator`
-3. Add tests for new functionality
-4. Run test suite: `python -m pytest`
-5. Submit pull request with detailed description
-
-## 📝 License
-
 This migration system is part of the V1→V2 database migration project.
 
 - **`config.py`** - Configuration settings and database connections
@@ -325,75 +315,4 @@ ODIN_DB_PASSWORD=your_password
 MIGRATION_BATCH_SIZE=1000    # Number of records to process at once
 DRY_RUN=False               # Set to True for dry-run mode
 LOG_LEVEL=INFO              # Logging level (DEBUG, INFO, WARNING, ERROR)
-```
-
-## Customization
-
-### Adding Data Transformations
-
-Edit the transformation functions in `utils.py`:
-
-```python
-def transform_user_data(df: pd.DataFrame) -> pd.DataFrame:
-    # Add your custom transformations here
-    df['new_column'] = df['old_column'].apply(lambda x: transform_logic(x))
-    return df
-```
-
-### Custom Table Mappings
-
-Modify the `get_table_mappings` method in `migrate.py`:
-
-```python
-async def get_table_mappings(self, schema_analysis: Dict) -> Dict[str, str]:
-    mappings = {}
-    # Add custom table mappings
-    mappings["heimdall_users"] = "odin_users"
-    mappings["heimdall_schools"] = "odin_institutions"
-    return mappings
-```
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Connection Errors**
-   - Verify database credentials in `.env` file
-   - Ensure databases are running and accessible
-
-2. **Schema Mismatches**
-   - Run schema analysis first
-   - Add necessary transformations in `utils.py`
-
-3. **Memory Issues with Large Data**
-   - Reduce `MIGRATION_BATCH_SIZE` in config
-   - Consider running migrations table by table
-
-### Getting Help
-
-1. Run with `--verbose` flag for detailed logging
-2. Check the generated log files
-3. Review the schema comparison reports
-
-## Safety Recommendations
-
-1. **Always run dry-run first** to understand what will be migrated
-2. **Backup your databases** before running the actual migration
-3. **Test with a small dataset** first
-4. **Monitor the migration** process and check logs regularly
-5. **Validate results** after migration completes
-
-## File Structure
-
-```
-migrator/
-├── __init__.py              # Package initialization
-├── config.py                # Configuration settings
-├── db_utils.py             # Database utilities
-├── migrate.py              # Main migration script
-├── analyze_schemas.py      # Schema analysis tool
-├── utils.py                # Utility functions
-├── requirements.txt        # Python dependencies
-├── .env.example           # Environment template
-└── README.md              # This file
 ```

@@ -16,11 +16,11 @@ PRISMA_V2_DIR = BASE_DIR / "prisma-files" / "v2"
 
 # Database configurations - V1 (Old Database)
 V1_DB_CONFIG = {
-    "host": os.getenv("V1_DB_HOST", "localhost"),
+    "host": os.getenv("V1_DB_HOST"),
     "port": int(os.getenv("V1_DB_PORT", "5432")),
-    "database": os.getenv("V1_DB_NAME", "old_recess"),
-    "user": os.getenv("V1_DB_USER", "postgres"),
-    "password": os.getenv("V1_DB_PASSWORD", ""),
+    "database": os.getenv("V1_DB_NAME"),
+    "user": os.getenv("V1_DB_USER"),
+    "password": os.getenv("V1_DB_PASSWORD"),
 }
 
 # Database configurations - V2 (New Database)

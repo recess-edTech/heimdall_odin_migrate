@@ -71,10 +71,7 @@ migrate = "migrator.cli:main"
 analyze-schemas = "migrator.analyze_schemas:main"
 
 [project.urls]
-Homepage = "https://github.com/recess/heimdall-odin-migrator"
-Documentation = "https://github.com/recess/heimdall-odin-migrator/docs"
-Repository = "https://github.com/recess/heimdall-odin-migrator"
-Issues = "https://github.com/recess/heimdall-odin-migrator/issues"
+Homepage = "https://github.com/domains18/iroh.git"
 
 # Tool configurations
 [tool.setuptools.packages.find]
