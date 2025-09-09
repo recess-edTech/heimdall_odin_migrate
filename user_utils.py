@@ -4,13 +4,12 @@ Handles the central challenge of creating User records for Teachers, Parents, St
 """
 
 import logging
-import uuid
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
 from enum import Enum
 
-from ..db_utils import db_manager
-from ..config import DEFAULT_VALUES
+from db_utils import db_manager
+from config import DEFAULT_VALUES
 
 logger = logging.getLogger(__name__)
 
@@ -57,12 +56,8 @@ class UserManager:
             # Handle phone uniqueness  
             phone = await self._ensure_unique_phone(user_data.phone_number, user_data.user_type)
             
-            # Generate UUID
-            user_uuid = str(uuid.uuid4())
-            
-            # Prepare user data for insertion
+            # Prepare user data for insertion (V2 uses auto-increment int IDs, no UUID needed)
             insert_data = {
-                "uuid": user_uuid,
                 "first_name": user_data.first_name,
                 "middle_name": user_data.middle_name,
                 "last_name": user_data.last_name,
@@ -81,7 +76,7 @@ class UserManager:
             # Remove None values
             insert_data = {k: v for k, v in insert_data.items() if v is not None}
             
-            # Insert user
+            # Insert user (will return auto-increment int ID)
             user_id = await db_manager.insert_record("users", insert_data)
             
             if user_id and user_data.v1_id:
