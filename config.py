@@ -40,7 +40,7 @@ LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 # Migration order - defines the sequence of migration
 MIGRATION_ORDER = [
     "schools",
-    "teachers", 
+    "teachers",
     "parents",
     "students",
     "streams",
@@ -56,7 +56,7 @@ DEFAULT_VALUES = {
     "gender": "MALE",  # when not specified
     "user_type_mapping": {
         "teacher": "TEACHER",
-        "parent": "PARENT", 
+        "parent": "PARENT",
         "student": "STUDENT",
         "school": "SCHOOL_ADMIN"
     }
@@ -65,4 +65,20 @@ DEFAULT_VALUES = {
 # Curriculum mappings - these need to be set up in V2 database first
 DEFAULT_CURRICULUM_ID = 1  # Assumes a default curriculum exists
 DEFAULT_GRADE_SYSTEM_ID = 1  # Assumes a default grade system exists
-DEFAULT_CLASS_LEVEL_ID = 1  # Assumes a default class level exists
+
+
+# class_levels mapping - V1 to V2
+PRE_PRIMARY_LEVEL_ID = 1
+PRIMARY_ID = 2
+JUNIOR_SECONDARY_ID = 3
+SENIOR_SECONDARY_ID = 4
+NURSERY_ID = 5
+
+
+CLASS_LEVELS = {
+    "pre primary": PRE_PRIMARY_LEVEL_ID,
+    "primary": PRIMARY_ID,
+    "junior secondary": JUNIOR_SECONDARY_ID,
+    "senior secondary": SENIOR_SECONDARY_ID,
+    "nursery": NURSERY_ID,
+}
