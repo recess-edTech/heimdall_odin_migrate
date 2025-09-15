@@ -1,5 +1,9 @@
 # V1 to V2 Database Migration System
 
+## 🎯 Overview
+
+This migration system safely transfers data from V1 to V2 Supabase databases with **strict data integrity validation** to ensure no orphaned records.
+
 
 ### Key Changes V1 → V2
 - **V1**: Separate `Teacher`, `Parent`, `Student` tables with direct authentication
@@ -8,40 +12,52 @@
 
 ### Migration Flow
 ```
-1. Schools → 2. Teachers → 3. Parents → 4. Students
+1. Pre-Migration Analysis → 2. Schools → 3. Teachers → 4. Parents → 5. Students
 ```
 
 Each step creates necessary User records and maintains referential integrity.
 
-## 📋 Prerequisites
+## �️ Prerequisites
 
-### 1. Install Dependencies
+### 1. Generate Database Dumps (IMPORTANT FIRST STEP)
+
+**Before any migration**, generate reference dumps and analysis:
+
+```bash
+# Quick backup (requires pg_dump)
+./generate_dump.sh
+
+# Comprehensive analysis (recommended)
+python generate_dump.py
+```
+
+### 2. Install Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Environment Configuration
+### 3. Environment Configuration
 
 Create a `.env` file with your database configurations:
 
 ```bash
 # V1 Database (Source)
-V1_DB_HOST=localhost
+V1_DB_HOST=your-v1-supabase-host
 V1_DB_PORT=5432
-V1_DB_NAME=v1_database
-V1_DB_USER=your_user
-V1_DB_PASSWORD=your_password
+V1_DB_NAME=postgres
+V1_DB_USER=postgres
+V1_DB_PASSWORD=your_v1_password
 
 # V2 Database (Target)
-V2_DB_HOST=localhost
+V2_DB_HOST=your-v2-supabase-host
 V2_DB_PORT=5432
-V2_DB_NAME=v2_database
-V2_DB_USER=your_user
-V2_DB_PASSWORD=your_password
+V2_DB_NAME=postgres
+V2_DB_USER=postgres
+V2_DB_PASSWORD=your_v2_password
 ```
 
-### 3. Setup V2 Database Structure
+### 4. Setup V2 Database Structure
 
 Before running migrations, initialize the V2 database with required reference data:
 
