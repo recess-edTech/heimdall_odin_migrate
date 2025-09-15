@@ -266,6 +266,26 @@ class MigrationRunner:
         print(f"  Total users created: {user_stats['total_users_created']}")
         print(f"  Unique emails generated: {user_stats['unique_emails_generated']}")
         print(f"  Unique phones generated: {user_stats['unique_phones_generated']}")
+        
+        # Print enhanced school migration report if available
+        if hasattr(school_migrator, 'get_migration_report'):
+            school_report = school_migrator.get_migration_report()
+            print(f"\nEnhanced School Migration Report:")
+            print(f"  Success rate: {school_report.get('success_rate', 0):.1f}%")
+            print(f"  Admin users created: {school_report.get('admin_users_created', 0)}")
+            print(f"  Validation errors: {school_report.get('validation_errors', 0)}")
+            print(f"  Validation warnings: {school_report.get('validation_warnings', 0)}")
+            
+            # Show first few errors/warnings if any
+            if school_report.get('detailed_errors'):
+                print(f"\n  Sample Errors:")
+                for error in school_report['detailed_errors'][:3]:
+                    print(f"    - {error}")
+            
+            if school_report.get('detailed_warnings'):
+                print(f"\n  Sample Warnings:")
+                for warning in school_report['detailed_warnings'][:3]:
+                    print(f"    - {warning}")
 
 
 async def main():
