@@ -7,10 +7,10 @@ import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
-from ..db_utils import db_manager
-from ..user_utils import user_manager
-from ..migration_session import get_migration_session, MigrationPhase
-from .school_migrator import school_migrator
+from db_utils import db_manager
+from user_utils import user_manager
+from migration_session import get_migration_session, MigrationPhase
+from migrators.school_migrator import school_migrator
 
 logger = logging.getLogger(__name__)
 

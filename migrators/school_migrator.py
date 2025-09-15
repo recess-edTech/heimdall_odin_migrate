@@ -8,10 +8,10 @@ from typing import Dict, Any, List, Optional
 import pandas as pd
 from typing import Union, Literal
 
-from ..db_utils import db_manager
-from ..config import DEFAULT_CURRICULUM_ID, CLASS_LEVELS, DEFAULT_GRADE_SYSTEM_ID
-from ..user_utils import user_manager, UserType, UserData
-from ..migration_session import get_migration_session, MigrationPhase
+from db_utils import db_manager
+from config import DEFAULT_CURRICULUM_ID, CLASS_LEVELS, DEFAULT_GRADE_SYSTEM_ID
+from user_utils import user_manager, UserType, UserData
+from migration_session import get_migration_session, MigrationPhase
 
 logger = logging.getLogger(__name__)
 
