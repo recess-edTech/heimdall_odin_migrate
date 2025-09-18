@@ -66,30 +66,6 @@ else
     echo "⚠️  V1 database connection details not found in environment"
 fi
 
-# V2 Database dumps
-if [ -n "$V2_DB_HOST" ]; then
-    echo ""
-    echo "📊 === V2 Database Dumps ==="
-    
-    V2_DIR="$OUTPUT_DIR/v2"
-    mkdir -p "$V2_DIR"
-    
-    # Complete dump
-    run_pg_dump "V2" "$V2_DB_HOST" "$V2_DB_PORT" "$V2_DB_USER" "$V2_DB_PASSWORD" "$V2_DB_NAME" \
-        "$V2_DIR/v2_complete_dump_${TIMESTAMP}.sql" ""
-    
-    # Schema only
-    run_pg_dump "V2" "$V2_DB_HOST" "$V2_DB_PORT" "$V2_DB_USER" "$V2_DB_PASSWORD" "$V2_DB_NAME" \
-        "$V2_DIR/v2_schema_only_${TIMESTAMP}.sql" "--schema-only"
-    
-    # Data only (if V2 has data)
-    run_pg_dump "V2" "$V2_DB_HOST" "$V2_DB_PORT" "$V2_DB_USER" "$V2_DB_PASSWORD" "$V2_DB_NAME" \
-        "$V2_DIR/v2_data_only_${TIMESTAMP}.sql" "--data-only"
-    
-else
-    echo "⚠️  V2 database connection details not found in environment"
-fi
-
 # Generate quick summary
 SUMMARY_FILE="$OUTPUT_DIR/dump_summary_${TIMESTAMP}.txt"
 echo "📋 Generating dump summary..."
