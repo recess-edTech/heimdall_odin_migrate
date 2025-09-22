@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "@types/dotenv": "^8.2.3",
+    "@types/node": "^24.5.2",
+    "dotenv": "^17.2.2",
+    "postgres": "^3.4.7"
+  }
+}

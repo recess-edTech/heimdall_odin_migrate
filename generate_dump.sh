@@ -60,7 +60,7 @@ if [ -n "$V1_DB_HOST" ]; then
     
     # Data only
     run_pg_dump "V1" "$V1_DB_HOST" "$V1_DB_PORT" "$V1_DB_USER" "$V1_DB_PASSWORD" "$V1_DB_NAME" \
-        "$V1_DIR/v1_data_only_${TIMESTAMP}.sql" "--data-only"
+        "$V1_DIR/v1_data_only_${TIMESTAMP}.sql" "--data-only"-
     
 else
     echo "⚠️  V1 database connection details not found in environment"
